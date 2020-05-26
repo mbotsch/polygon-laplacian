@@ -19,6 +19,7 @@ public:
               compare_sphere(false),
               compare_cube(false) {
         set_draw_mode("Hidden Line");
+        add_help_item("Shift + MMB", "Geod. distances for selected vertex", 5);
     }
 
     virtual bool load_mesh(const char *filename) override;
