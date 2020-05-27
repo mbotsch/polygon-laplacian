@@ -23,40 +23,35 @@ bool lump_mass_matrix_ = true;
 
 //=============================================================================
 
-void setup_stiffness_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &S)
+void setup_stiffness_matrix(const SurfaceMesh &mesh, Eigen::SparseMatrix<double> &S)
 {
     const int nv = mesh.n_vertices();
 
     Eigen::MatrixXd Si;
-    Eigen::Vector3d min;
-    Eigen::VectorXd w;
-    Eigen::MatrixXd poly;
+    Eigen::Vector3d vvertex;  // virtual vertex position
+    Eigen::VectorXd vweights; // virtual vertex affine weights
+    Eigen::MatrixXd polygon;  // polygon vertices
 
     std::vector<Eigen::Triplet<double>> trip;
 
     for (Face f : mesh.faces())
     {
         // collect polygon vertices
-        const int n = mesh.valence(f);
-        poly.resize(n, 3);
-        int i = 0;
+        int i=0, n = mesh.valence(f);
+        polygon.resize(n, 3);
         for (Vertex v : mesh.vertices(f))
         {
-            for (int h = 0; h < 3; h++)
-            {
-                poly.row(i)(h) = mesh.position(v)[h];
-            }
-            i++;
+            polygon.row(i++) = (Eigen::Vector3d) mesh.position(v);
         }
 
         // compute affine weights of virtual vertex
-        compute_virtual_vertex(poly, w);
+        compute_virtual_vertex(polygon, vweights);
 
         // compute position of virtual vertex
-        Eigen::Vector3d min = poly.transpose() * w;
+        Eigen::Vector3d vvertex = polygon.transpose() * vweights;
 
         // setup element stiffness matrix
-        setup_polygon_stiffness_matrix(poly, min, w, Si);
+        setup_polygon_stiffness_matrix(polygon, vvertex, vweights, Si);
 
         // assemble to global stiffness matrix
         int j = 0;
@@ -80,13 +75,14 @@ void setup_stiffness_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &S)
 
 //----------------------------------------------------------------------------------
 
-void setup_polygon_stiffness_matrix(const Eigen::MatrixXd &poly,
-                                    const Eigen::Vector3d &min,
-                                    Eigen::VectorXd &w, Eigen::MatrixXd &L)
+void setup_polygon_stiffness_matrix(const Eigen::MatrixXd &polygon,
+                                    const Eigen::Vector3d &vvertex,
+                                    const Eigen::VectorXd &vweights, 
+                                    Eigen::MatrixXd &S)
 {
-    const int n = (int)poly.rows();
-    L.resize(n, n);
-    L.setZero();
+    const int n = (int)polygon.rows();
+    S.resize(n, n);
+    S.setZero();
 
     Eigen::VectorXd ln(n + 1);
     ln.setZero();
@@ -97,9 +93,9 @@ void setup_polygon_stiffness_matrix(const Eigen::MatrixXd &poly,
     {
         const int i1 = (i + 1) % n;
 
-        l2[2] = (poly.row(i) - poly.row(i1)).squaredNorm();
-        l2[0] = (poly.row(i1) - min.transpose()).squaredNorm();
-        l2[1] = (poly.row(i) - min.transpose()).squaredNorm();
+        l2[2] = (polygon.row(i) - polygon.row(i1)).squaredNorm();
+        l2[0] = (polygon.row(i1) - vvertex.transpose()).squaredNorm();
+        l2[1] = (polygon.row(i) - vvertex.transpose()).squaredNorm();
 
         l[0] = sqrt(l2[0]);
         l[1] = sqrt(l2[1]);
@@ -114,12 +110,12 @@ void setup_polygon_stiffness_matrix(const Eigen::MatrixXd &poly,
             l[1] = 0.25 * (l2[2] + l2[0] - l2[1]) / area;
             l[2] = 0.25 * (l2[0] + l2[1] - l2[2]) / area;
 
-            L(i1, i1) += l[0];
-            L(i, i) += l[1];
-            L(i1, i) -= l[2];
-            L(i, i1) -= l[2];
-            L(i, i) += l[2];
-            L(i1, i1) += l[2];
+            S(i1, i1) += l[0];
+            S(i, i) += l[1];
+            S(i1, i) -= l[2];
+            S(i, i1) -= l[2];
+            S(i, i) += l[2];
+            S(i1, i1) += l[2];
 
             ln(i1) -= l[0];
             ln(i) -= l[1];
@@ -130,45 +126,40 @@ void setup_polygon_stiffness_matrix(const Eigen::MatrixXd &poly,
     // sandwiching with (local) restriction and prolongation matrix
     for (int j = 0; j < n; ++j)
         for (int i = 0; i < n; ++i)
-            L(i, j) += w(i) * ln(j) + w(j) * ln(i) + w(i) * w(j) * ln(n);
+            S(i, j) += vweights(i) * ln(j) + vweights(j) * ln(i) + vweights(i) * vweights(j) * ln(n);
 }
 
 //----------------------------------------------------------------------------------
 
-void setup_mass_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &M)
+void setup_mass_matrix(const SurfaceMesh &mesh, Eigen::SparseMatrix<double> &M)
 {
     const int nv = mesh.n_vertices();
 
     Eigen::MatrixXd Mi;
-    Eigen::Vector3d min;
-    Eigen::VectorXd w;
-    Eigen::MatrixXd poly;
+    Eigen::Vector3d vvertex;  // virtual vertex position
+    Eigen::VectorXd vweights; // virtual vertex affine weights
+    Eigen::MatrixXd polygon;  // polygon vertices
 
     std::vector<Eigen::Triplet<double>> trip;
 
     for (Face f : mesh.faces())
     {
         // collect polygon vertices
-        const int n = mesh.valence(f);
-        poly.resize(n, 3);
-        int i = 0;
+        int i=0, n = mesh.valence(f);
+        polygon.resize(n, 3);
         for (Vertex v : mesh.vertices(f))
         {
-            for (int h = 0; h < 3; h++)
-            {
-                poly.row(i)(h) = mesh.position(v)[h];
-            }
-            i++;
+            polygon.row(i++) = (Eigen::Vector3d) mesh.position(v);
         }
 
         // compute affine weights of virtual vertex
-        compute_virtual_vertex(poly, w);
+        compute_virtual_vertex(polygon, vweights);
 
         // compute position of virtual vertex
-        Eigen::Vector3d min = poly.transpose() * w;
+        Eigen::Vector3d vvertex = polygon.transpose() * vweights;
 
         // setup element mass matrix
-        setup_polygon_mass_matrix(poly, min, w, Mi);
+        setup_polygon_mass_matrix(polygon, vvertex, vweights, Mi);
 
         // assemble into global mass matrix
         int j = 0;
@@ -191,18 +182,20 @@ void setup_mass_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &M)
 
     // optional: lump mass matrix
     if (lump_mass_matrix_)
+    {
         lump_matrix(M);
+    }
 }
 
 //----------------------------------------------------------------------------------
 
-void setup_polygon_mass_matrix(const Eigen::MatrixXd &poly,
-                               const Eigen::Vector3d &min, Eigen::VectorXd &w,
+void setup_polygon_mass_matrix(const Eigen::MatrixXd &polygon,
+                               const Eigen::Vector3d &vvertex, 
+                               const Eigen::VectorXd &vweights,
                                Eigen::MatrixXd &M)
 {
-    const int n = (int)poly.rows();
+    const int n = (int)polygon.rows();
     M.resize(n, n);
-
     M.setZero();
 
     Eigen::VectorXd ln(n + 1);
@@ -214,9 +207,9 @@ void setup_polygon_mass_matrix(const Eigen::MatrixXd &poly,
     {
         const int i1 = (i + 1) % n;
 
-        l2[2] = (poly.row(i) - poly.row(i1)).squaredNorm();
-        l2[0] = (poly.row(i1) - min.transpose()).squaredNorm();
-        l2[1] = (poly.row(i) - min.transpose()).squaredNorm();
+        l2[2] = (polygon.row(i) - polygon.row(i1)).squaredNorm();
+        l2[0] = (polygon.row(i1) - vvertex.transpose()).squaredNorm();
+        l2[1] = (polygon.row(i) - vvertex.transpose()).squaredNorm();
 
         l[0] = sqrt(l2[0]);
         l[1] = sqrt(l2[1]);
@@ -242,7 +235,7 @@ void setup_polygon_mass_matrix(const Eigen::MatrixXd &poly,
     // sandwiching with (local) restriction and prolongation matrix
     for (int j = 0; j < n; ++j)
         for (int i = 0; i < n; ++i)
-            M(i, j) += w(i) * ln(j) + w(j) * ln(i) + w(i) * w(j) * ln(n);
+            M(i, j) += vweights(i) * ln(j) + vweights(j) * ln(i) + vweights(i) * vweights(j) * ln(n);
 }
 
 //-----------------------------------------------------------------------------
@@ -263,7 +256,7 @@ void lump_matrix(SparseMatrix &D)
 
 //----------------------------------------------------------------------------------
 
-void setup_prolongation_matrix(SurfaceMesh &mesh, SparseMatrix &A)
+void setup_prolongation_matrix(const SurfaceMesh &mesh, SparseMatrix &A)
 {
     auto area_weights = mesh.get_face_property<Eigen::VectorXd>("f:weights");
 
@@ -353,7 +346,7 @@ Point area_weighted_centroid(const SurfaceMesh &mesh)
 
 //-----------------------------------------------------------------------------
 
-Eigen::Vector3d gradient_hat_function(Point i, Point j, Point k)
+Eigen::Vector3d gradient_hat_function(const Point& i, const Point& j, const Point& k)
 {
     Point base, site, grad;
     Eigen::Vector3d gradient;
@@ -377,7 +370,7 @@ Eigen::Vector3d gradient_hat_function(Point i, Point j, Point k)
 
 //-----------------------------------------------------------------------------
 
-void setup_gradient_matrix(SurfaceMesh &mesh, SparseMatrix &G)
+void setup_gradient_matrix(const SurfaceMesh &mesh, SparseMatrix &G)
 {
     SparseMatrix A;
     setup_prolongation_matrix(mesh, A);
@@ -426,7 +419,7 @@ void setup_gradient_matrix(SurfaceMesh &mesh, SparseMatrix &G)
 
 //-----------------------------------------------------------------------------
 
-void setup_divergence_matrix(SurfaceMesh &mesh, SparseMatrix &Gt)
+void setup_divergence_matrix(const SurfaceMesh &mesh, SparseMatrix &Gt)
 {
     SparseMatrix G, M;
     setup_gradient_matrix(mesh, G);
@@ -436,7 +429,7 @@ void setup_divergence_matrix(SurfaceMesh &mesh, SparseMatrix &Gt)
 
 //-----------------------------------------------------------------------------
 
-void setup_gradient_mass_matrix(SurfaceMesh &mesh,
+void setup_gradient_mass_matrix(const SurfaceMesh &mesh,
                                 Eigen::SparseMatrix<double> &M)
 {
     auto area_points = mesh.get_face_property<Point>("f:point");
