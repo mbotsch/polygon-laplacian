@@ -48,35 +48,35 @@ void lump_matrix(Eigen::SparseMatrix<double> &M);
 void setup_prolongation_matrix(SurfaceMesh &mesh,
                                Eigen::SparseMatrix<double> &A);
 
-//! barycenter/my_centroid of mesh, computed as area-weighted mean of vertices.
+// barycenter/my_centroid of mesh, computed as area-weighted mean of vertices.
 Point area_weighted_centroid(const SurfaceMesh &mesh);
 
-//! computes the area of a face.
+// computes the surface area of a polygon.
 double face_area(const SurfaceMesh &mesh, Face f);
 
-//! surface area of the polygon mesh.
-Scalar polygon_surface_area(const SurfaceMesh &mesh);
+// compute the surface area of a polygon mesh (as sum of face areas).
+Scalar mesh_area(const SurfaceMesh &mesh);
 
-//! Computes the gradient on a triangle formed by the points i, j and k.
+// Computes the gradient on a triangle formed by the points i, j and k.
 Eigen::Vector3d gradient_hat_function(Point i, Point j, Point k);
 
-//! Computes the Gradient matrix for any given mesh.
+// Computes the Gradient matrix for any given mesh.
 void setup_gradient_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &G);
 
-//! Computes the Divergence matrix for any given mesh.
+// Computes the Divergence matrix for any given mesh.
 void setup_divergence_matrix(SurfaceMesh &mesh,
                              Eigen::SparseMatrix<double> &Gt);
 
-//! Computes the diagonal mass matrix W needed for L = DWG.
+// Computes the diagonal mass matrix W needed for L = DWG.
 void setup_gradient_mass_matrix(SurfaceMesh &mesh,
                                 Eigen::SparseMatrix<double> &M);
 
-//! Computes the squared triangle area minimizing points and its affine combination weights
-//! for each face and stores it in a prior defined property.
-void setup_face_point_properties(SurfaceMesh &mesh);
+// Computes the squared triangle area minimizing points and its affine combination weights
+// for each face and stores it in a prior defined property.
+void setup_virtual_vertices(SurfaceMesh &mesh);
 
-//! Computes the affine weights for the polygon vertices to form the implicit vertex.
-void find_polygon_weights(const Eigen::MatrixXd &poly,
-                          Eigen::VectorXd &weights);
+// compute the affine weights wrt the polygon vertices to form the virtual vertex
+void compute_virtual_vertex(const Eigen::MatrixXd &poly,
+                            Eigen::VectorXd &weights);
 
 //=============================================================================

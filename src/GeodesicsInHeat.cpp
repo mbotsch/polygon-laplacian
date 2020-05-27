@@ -16,7 +16,7 @@ GeodesicsInHeat::GeodesicsInHeat(SurfaceMesh &mesh) : mesh_(mesh)
 
     distance_ = mesh_.add_vertex_property<Scalar>("v:dist");
 
-    setup_face_point_properties(mesh_);
+    setup_virtual_vertices(mesh_);
 }
 
 //-----------------------------------------------------------------------------

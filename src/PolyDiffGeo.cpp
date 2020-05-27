@@ -50,7 +50,7 @@ void setup_stiffness_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &S)
         }
 
         // compute affine weights of virtual vertex
-        find_polygon_weights(poly, w);
+        compute_virtual_vertex(poly, w);
 
         // compute position of virtual vertex
         Eigen::Vector3d min = poly.transpose() * w;
@@ -162,7 +162,7 @@ void setup_mass_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &M)
         }
 
         // compute affine weights of virtual vertex
-        find_polygon_weights(poly, w);
+        compute_virtual_vertex(poly, w);
 
         // compute position of virtual vertex
         Eigen::Vector3d min = poly.transpose() * w;
@@ -299,7 +299,7 @@ void setup_prolongation_matrix(SurfaceMesh &mesh, SparseMatrix &A)
 
 //-----------------------------------------------------------------------------
 
-Scalar polygon_surface_area(const SurfaceMesh &mesh)
+Scalar mesh_area(const SurfaceMesh &mesh)
 {
     Scalar area(0);
     for (auto f : mesh.faces())
@@ -468,17 +468,13 @@ void setup_gradient_mass_matrix(SurfaceMesh &mesh,
 
 //-----------------------------------------------------------------------------
 
-void setup_face_point_properties(SurfaceMesh &mesh)
+void setup_virtual_vertices(SurfaceMesh &mesh)
 {
     auto area_points = mesh.get_face_property<Point>("f:point");
     auto area_weights = mesh.get_face_property<Eigen::VectorXd>("f:weights");
 
-    Eigen::MatrixXd T, P, PP;
-    std::vector<Eigen::VectorXd> weights, testWeights, testWeightsPhil;
     Eigen::VectorXd w;
     Eigen::MatrixXd poly;
-
-    std::vector<Eigen::Triplet<double>> trip;
 
     for (Face f : mesh.faces())
     {
@@ -487,22 +483,20 @@ void setup_face_point_properties(SurfaceMesh &mesh)
         int i = 0;
         for (Vertex v : mesh.vertices(f))
         {
-            for (int h = 0; h < 3; h++)
-            {
-                poly.row(i)(h) = mesh.position(v)[h];
-            }
+            poly.row(i) = (Eigen::Vector3d) mesh.position(v);
             i++;
         }
-        find_polygon_weights(poly, w);
-        Eigen::Vector3d min = poly.transpose() * w;
-        area_points[f] = Point(min(0), min(1), min(2));
+
+        compute_virtual_vertex(poly, w);
+
+        area_points[f]  = poly.transpose() * w;
         area_weights[f] = w;
     }
 }
 
 //-----------------------------------------------------------------------------
 
-void find_polygon_weights(const Eigen::MatrixXd &poly, Eigen::VectorXd &weights)
+void compute_virtual_vertex(const Eigen::MatrixXd &poly, Eigen::VectorXd &weights)
 {
     int val = poly.rows();
     Eigen::MatrixXd J(val, val);

@@ -26,7 +26,7 @@ void Smoothing::implicit_smoothing(Scalar timestep)
 
     // store center and area
     Point center_before = area_weighted_centroid(mesh_);
-    Scalar area_before = polygon_surface_area(mesh_);
+    Scalar area_before = mesh_area(mesh_);
 
     for (auto v : mesh_.vertices())
     {
@@ -84,7 +84,7 @@ void Smoothing::implicit_smoothing(Scalar timestep)
     }
 
     // restore original surface area
-    Scalar area_after = polygon_surface_area(mesh_);
+    Scalar area_after = mesh_area(mesh_);
     Scalar scale = sqrt(1 / area_after);
     Point center_after = area_weighted_centroid(mesh_);
     for (auto v : mesh_.vertices())
