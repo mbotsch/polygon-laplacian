@@ -1,4 +1,7 @@
 //=============================================================================
+// Copyright 2020 Astrid Bunge, Philipp Herholz, Misha Kazhdan, Mario Botsch.
+// Distributed under MIT license, see file LICENSE for details.
+//=============================================================================
 
 #include "GeodesicsInHeat.h"
 #include "PolyDiffGeo.h"
