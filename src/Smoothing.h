@@ -14,12 +14,13 @@ using namespace pmp;
 
 //=============================================================================
 
-class Smoothing 
+class Smoothing
 {
 public:
-
     Smoothing(SurfaceMesh &mesh)
-        : mesh_(mesh), vertices_(0), faces_(0), clamp_(false) {}
+        : mesh_(mesh), vertices_(0), faces_(0), clamp_(false)
+    {
+    }
 
     //! Perform implicit Laplacian smoothing with \c timestep.
     void implicit_smoothing(Scalar timestep);

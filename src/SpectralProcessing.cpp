@@ -14,32 +14,34 @@ using Triplet = Eigen::Triplet<double>;
 
 //=============================================================================
 
-double factorial(int n) 
+double factorial(int n)
 {
     if (n == 0)
         return 1.0;
-    return (double) n * factorial(n - 1);
+    return (double)n * factorial(n - 1);
 }
 
 //----------------------------------------------------------------------------
 
-double SpectralProcessing::scale(int l, int m) 
+double SpectralProcessing::scale(int l, int m)
 {
     double temp =
-            ((2.0 * l + 1.0) * factorial(l - m)) / (4.0 * M_PI * factorial(l + m));
+        ((2.0 * l + 1.0) * factorial(l - m)) / (4.0 * M_PI * factorial(l + m));
     return sqrt(temp);
 }
 
 //----------------------------------------------------------------------------
 
-double SpectralProcessing::P(int l, int m, double x) 
+double SpectralProcessing::P(int l, int m, double x)
 {
     // evaluate an Associated Legendre Polynomial P(l,m,x) at x
     double pmm = 1.0;
-    if (m > 0) {
+    if (m > 0)
+    {
         double somx2 = sqrt((1.0 - x) * (1.0 + x));
         double fact = 1.0;
-        for (int i = 1; i <= m; i++) {
+        for (int i = 1; i <= m; i++)
+        {
             pmm *= (-fact) * somx2;
             fact += 2.0;
         }
@@ -50,7 +52,8 @@ double SpectralProcessing::P(int l, int m, double x)
     if (l == m + 1)
         return pmmp1;
     double pll = 0.0;
-    for (int ll = m + 2; ll <= l; ++ll) {
+    for (int ll = m + 2; ll <= l; ++ll)
+    {
         pll = ((2.0 * ll - 1.0) * x * pmmp1 - (ll + m - 1.0) * pmm) / (ll - m);
         pmm = pmmp1;
         pmmp1 = pll;
@@ -60,9 +63,8 @@ double SpectralProcessing::P(int l, int m, double x)
 
 //----------------------------------------------------------------------------
 
-double SpectralProcessing::sphericalHarmonic(Point p, int l, int m) 
+double SpectralProcessing::sphericalHarmonic(Point p, int l, int m)
 {
-
     // l is the band, range [0..n]
     // m in the range [-l..l]
     // transform cartesian to spherical coordinates, assuming r = 1
@@ -82,7 +84,7 @@ double SpectralProcessing::sphericalHarmonic(Point p, int l, int m)
 
 //----------------------------------------------------------------------------
 
-void SpectralProcessing::analyze_sphericalHarmonics(bool lumped) 
+void SpectralProcessing::analyze_sphericalHarmonics(bool lumped)
 {
     auto points = mesh.vertex_property<Point>("v:point");
 
@@ -101,10 +103,13 @@ void SpectralProcessing::analyze_sphericalHarmonics(bool lumped)
     solver.analyzePattern(M);
     solver.factorize(M);
 
-    for (int l = 1; l <= band; l++) {
+    for (int l = 1; l <= band; l++)
+    {
         double eval = -l * (l + 1);
-        for (int m = -l; m <= l; m++) {
-            for (auto v : mesh.vertices()) {
+        for (int m = -l; m <= l; m++)
+        {
+            for (auto v : mesh.vertices())
+            {
                 y(v.idx()) = sphericalHarmonic(points[v], l, m);
             }
             y.normalize();

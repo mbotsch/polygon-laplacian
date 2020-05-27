@@ -22,7 +22,7 @@ using namespace pmp;
 
 //=============================================================================
 
-bool Viewer::load_mesh(const char *filename) 
+bool Viewer::load_mesh(const char *filename)
 {
     bool success = MeshViewer::load_mesh(filename);
     set_draw_mode("Hidden Line");
@@ -31,24 +31,7 @@ bool Viewer::load_mesh(const char *filename)
 
 //----------------------------------------------------------------------------
 
-void Viewer::keyboard(int key, int scancode, int action, int mods) 
-{
-    if (action != GLFW_PRESS) // only react on key press events
-        return;
-
-    switch (key) {
-        // add your own keyboard action here
-
-        default: {
-            MeshViewer::keyboard(key, scancode, action, mods);
-            break;
-        }
-    }
-}
-
-//----------------------------------------------------------------------------
-
-void Viewer::process_imgui() 
+void Viewer::process_imgui()
 {
     // add standard mesh info stuff
     pmp::MeshViewer::process_imgui();
@@ -56,26 +39,32 @@ void Viewer::process_imgui()
     ImGui::Spacing();
     ImGui::Spacing();
 
-    if (ImGui::CollapsingHeader("Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Settings", ImGuiTreeNodeFlags_DefaultOpen))
+    {
         ImGui::Checkbox("Clamp cotan", &clamp_cotan_);
     }
 
     ImGui::Spacing();
     ImGui::Spacing();
+
     // turn mesh into non-triangles
-    if (ImGui::CollapsingHeader("Polygons!", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Polygons!", ImGuiTreeNodeFlags_DefaultOpen))
+    {
         // Catmull-Clark subdivision
-        if (ImGui::Button("Catmull-Clark")) {
+        if (ImGui::Button("Catmull-Clark"))
+        {
             SurfaceSubdivision(mesh_).catmull_clark();
             update_mesh();
         }
 
         // dualize the mesh
-        if (ImGui::Button("Dualize mesh")) {
+        if (ImGui::Button("Dualize mesh"))
+        {
             dualize();
         }
 
-        if (ImGui::Button("Kugelize")) {
+        if (ImGui::Button("Kugelize"))
+        {
             for (auto v : mesh_.vertices())
                 mesh_.position(v) = normalize(mesh_.position(v));
             update_mesh();
@@ -87,8 +76,10 @@ void Viewer::process_imgui()
 
     // discrete harmonic parameterization
     if (ImGui::CollapsingHeader("Parametrization",
-                                ImGuiTreeNodeFlags_DefaultOpen)) {
-        if (ImGui::Button("Discrete Harmonic")) {
+                                ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        if (ImGui::Button("Discrete Harmonic"))
+        {
             Parameterization(mesh_).harmonic_free_boundary();
             mesh_.use_checkerboard_texture();
             set_draw_mode("Texture");
@@ -101,7 +92,8 @@ void Viewer::process_imgui()
     ImGui::Spacing();
 
     // implicit smoothing
-    if (ImGui::CollapsingHeader("Smoothing", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Smoothing", ImGuiTreeNodeFlags_DefaultOpen))
+    {
         static float timestep = 0.1;
         float lb = 0.001;
         float ub = 1.0;
@@ -109,15 +101,15 @@ void Viewer::process_imgui()
         ImGui::SliderFloat("TimeStep", &timestep, lb, ub);
         ImGui::PopItemWidth();
 
-        if (ImGui::Button("Implicit Smoothing")) {
+        if (ImGui::Button("Implicit Smoothing"))
+        {
             close_holes();
             Scalar dt = timestep;
             smooth_.implicit_smoothing(dt);
             update_mesh();
             BoundingBox bb = mesh_.bounds();
-            set_scene((vec3) bb.center(), 0.5 * bb.size());
+            set_scene((vec3)bb.center(), 0.5 * bb.size());
             open_holes();
-
         }
     }
 
@@ -125,12 +117,14 @@ void Viewer::process_imgui()
     ImGui::Spacing();
 
     // curvature visualization
-    if (ImGui::CollapsingHeader("Curvature", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Curvature", ImGuiTreeNodeFlags_DefaultOpen))
+    {
         static bool curvature_sphere_ = false;
         ImGui::Checkbox("Compare to unit sphere curvatures",
                         &curvature_sphere_);
 
-        if (ImGui::Button("Mean Curvature")) {
+        if (ImGui::Button("Mean Curvature"))
+        {
             Curvature analyzer(mesh_, curvature_sphere_);
             analyzer.analyze_curvature();
             mesh_.use_cold_warm_texture();
@@ -139,15 +133,16 @@ void Viewer::process_imgui()
         }
     }
     if (ImGui::CollapsingHeader("Geodesics in Heat",
-                                ImGuiTreeNodeFlags_DefaultOpen)) {
-
+                                ImGuiTreeNodeFlags_DefaultOpen))
+    {
         static bool geodesic_sphere_ = false;
         static bool geodesic_cube_ = false;
         ImGui::Checkbox("Compare distances to arc lengths", &geodesic_sphere_);
         ImGui::Checkbox("Compare to euclidean distances", &geodesic_cube_);
         compare_sphere = geodesic_sphere_;
         compare_cube = geodesic_cube_;
-        if (ImGui::Button("Compute Distances Vertex 0")) {
+        if (ImGui::Button("Compute Distances Vertex 0"))
+        {
             GeodesicsInHeat heat(mesh_, geodesic_sphere_, geodesic_cube_);
             heat.compute_geodesics();
 
@@ -157,32 +152,33 @@ void Viewer::process_imgui()
             mesh_.use_checkerboard_texture();
             update_mesh();
             set_draw_mode("Texture");
-
         }
     }
 }
 
 //----------------------------------------------------------------------------
 
-void Viewer::draw(const std::string &draw_mode) 
+void Viewer::draw(const std::string &draw_mode)
 {
-    // normal mesh draw
     mesh_.draw(projection_matrix_, modelview_matrix_, draw_mode);
 }
 
 //----------------------------------------------------------------------------
 
-void Viewer::dualize() 
+void Viewer::dualize()
 {
     SurfaceMeshGL dual;
 
     auto fvertex = mesh_.add_face_property<Vertex>("f:vertex");
-    for (auto f : mesh_.faces()) {
+    for (auto f : mesh_.faces())
+    {
         fvertex[f] = dual.add_vertex(centroid(mesh_, f));
     }
 
-    for (auto v : mesh_.vertices()) {
-        if (!mesh_.is_boundary(v)) {
+    for (auto v : mesh_.vertices())
+    {
+        if (!mesh_.is_boundary(v))
+        {
             std::vector<Vertex> vertices;
             for (auto f : mesh_.faces(v))
                 vertices.push_back(fvertex[f]);
@@ -196,7 +192,7 @@ void Viewer::dualize()
 
 //----------------------------------------------------------------------------
 
-void Viewer::update_mesh() 
+void Viewer::update_mesh()
 {
     // re-compute face and vertex normals
     mesh_.update_opengl_buffers();
@@ -204,22 +200,26 @@ void Viewer::update_mesh()
 
 //----------------------------------------------------------------------------
 
-void Viewer::close_holes() 
+void Viewer::close_holes()
 {
     bool finished = false;
     std::vector<Face> holes;
-    while (!finished) {
+    while (!finished)
+    {
         finished = true;
 
         // loop through all vertices
-        for (auto v : mesh_.vertices()) {
+        for (auto v : mesh_.vertices())
+        {
             // if we find a boundary vertex...
-            if (mesh_.is_boundary(v)) {
+            if (mesh_.is_boundary(v))
+            {
                 // trace boundary loop
                 std::vector<Vertex> vertices;
                 vertices.push_back(v);
                 for (Halfedge h = mesh_.halfedge(v); mesh_.to_vertex(h) != v;
-                     h = mesh_.next_halfedge(h)) {
+                     h = mesh_.next_halfedge(h))
+                {
                     vertices.push_back(mesh_.to_vertex(h));
                 }
 
@@ -238,7 +238,7 @@ void Viewer::close_holes()
 
 //----------------------------------------------------------------------------
 
-void Viewer::open_holes() 
+void Viewer::open_holes()
 {
     for (Face f : holes_)
         mesh_.delete_face(f);
@@ -248,14 +248,16 @@ void Viewer::open_holes()
 
 //----------------------------------------------------------------------------
 
-void Viewer::mouse(int button, int action, int mods) 
+void Viewer::mouse(int button, int action, int mods)
 {
     if (action == GLFW_PRESS && button == GLFW_MOUSE_BUTTON_MIDDLE &&
-        mods == GLFW_MOD_SHIFT) {
+        mods == GLFW_MOD_SHIFT)
+    {
         double x, y;
         cursor_pos(x, y);
         Vertex v = pick_vertex(x, y);
-        if (mesh_.is_valid(v)) {
+        if (mesh_.is_valid(v))
+        {
             GeodesicsInHeat heat(mesh_, compare_sphere, compare_cube);
             heat.compute_geodesics();
 
@@ -266,7 +268,9 @@ void Viewer::mouse(int button, int action, int mods)
             mesh_.use_checkerboard_texture();
             set_draw_mode("Texture");
         }
-    } else {
+    }
+    else
+    {
         MeshViewer::mouse(button, action, mods);
     }
 }

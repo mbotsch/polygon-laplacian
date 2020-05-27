@@ -13,7 +13,7 @@ using Triplet = Eigen::Triplet<double>;
 
 //=============================================================================
 
-void Smoothing::implicit_smoothing(Scalar timestep) 
+void Smoothing::implicit_smoothing(Scalar timestep)
 {
     if (!mesh_.n_vertices())
         return;
@@ -28,10 +28,12 @@ void Smoothing::implicit_smoothing(Scalar timestep)
     Point center_before = area_weighted_centroid(mesh_);
     Scalar area_before = polygon_surface_area(mesh_);
 
-    for (auto v : mesh_.vertices()) {
+    for (auto v : mesh_.vertices())
+    {
         mesh_.position(v) -= center_before;
     }
-    for (auto v : mesh_.vertices()) {
+    for (auto v : mesh_.vertices())
+    {
         mesh_.position(v) *= sqrt(1.0 / area_before);
     }
 
@@ -43,7 +45,8 @@ void Smoothing::implicit_smoothing(Scalar timestep)
 
     I.setIdentity();
 
-    for (auto v : mesh_.vertices()) {
+    for (auto v : mesh_.vertices())
+    {
         B(k, 0) = points[v][0];
         B(k, 1) = points[v][1];
         B(k, 2) = points[v][2];
@@ -59,14 +62,19 @@ void Smoothing::implicit_smoothing(Scalar timestep)
     solver.compute(L);
     X = solver.solve(M_B);
 
-    if (solver.info() != Eigen::Success) {
+    if (solver.info() != Eigen::Success)
+    {
         std::cerr << "SurfaceSmoothing: Could not solve linear system\n";
-    } else {
+    }
+    else
+    {
         // copy solution
         k = 0;
-        for (unsigned int i = 0; i < nv; ++i) {
+        for (unsigned int i = 0; i < nv; ++i)
+        {
             Vertex v(i);
-            if (!mesh_.is_boundary(v)) {
+            if (!mesh_.is_boundary(v))
+            {
                 points[v][0] = X(k, 0);
                 points[v][1] = X(k, 1);
                 points[v][2] = X(k, 2);
@@ -75,25 +83,24 @@ void Smoothing::implicit_smoothing(Scalar timestep)
         }
     }
 
-    //     restore original surface area
+    // restore original surface area
     Scalar area_after = polygon_surface_area(mesh_);
-
     Scalar scale = sqrt(1 / area_after);
     Point center_after = area_weighted_centroid(mesh_);
-
     for (auto v : mesh_.vertices())
+    {
         mesh_.position(v) -= center_after;
-
-    for (auto v : mesh_.vertices())
         mesh_.position(v) *= scale;
+    }
 }
-    
+
 //-----------------------------------------------------------------------------
 
-void Smoothing::update_stiffness_matrix() 
+void Smoothing::update_stiffness_matrix()
 {
     if (mesh_.n_faces() != faces_ || mesh_.n_vertices() != vertices_ ||
-            clamp_ != clamp_cotan_) {
+        clamp_ != clamp_cotan_)
+    {
         vertices_ = mesh_.n_vertices();
         faces_ = mesh_.n_faces();
         clamp_ = clamp_cotan_;

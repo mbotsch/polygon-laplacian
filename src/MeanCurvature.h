@@ -13,15 +13,15 @@ using namespace pmp;
 
 //=============================================================================
 
-class Curvature {
+class Curvature
+{
 public:
     Curvature(SurfaceMesh &mesh, bool compare)
-            : mesh_(mesh), compare_to_sphere(compare) {
-    }
+        : mesh_(mesh), compare_to_sphere(compare)
+    {}
 
     //! Visualizes the mean curvature of our mesh.
     void analyze_curvature(bool lumped = true);
-
 
 private:
     SurfaceMesh &mesh_;

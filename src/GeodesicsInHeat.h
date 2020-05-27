@@ -14,7 +14,7 @@ using namespace pmp;
 
 //=============================================================================
 
-class GeodesicsInHeat 
+class GeodesicsInHeat
 {
 public:
     GeodesicsInHeat(pmp::SurfaceMesh &mesh, bool geodist, bool euklid);
@@ -28,9 +28,7 @@ public:
 
     void compute_geodesics(bool lumped = true);
 
-
 private:
-    
     SurfaceMesh &mesh_;
 
     Eigen::MatrixXd pos;

@@ -13,7 +13,8 @@ using namespace pmp;
 
 //=============================================================================
 
-class SpectralProcessing {
+class SpectralProcessing
+{
 public:
     SpectralProcessing(SurfaceMesh &mesh) : mesh(mesh) {}
 

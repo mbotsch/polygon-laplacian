@@ -11,16 +11,16 @@
 
 //=============================================================================
 
-class Viewer : public pmp::MeshViewer 
+class Viewer : public pmp::MeshViewer
 {
 public:
-
     Viewer(const char *title, int width, int height)
-            : MeshViewer(title, width, height),
-              smooth_(mesh_),
-              analyzer_(mesh_),
-              compare_sphere(false),
-              compare_cube(false) {
+        : MeshViewer(title, width, height),
+          smooth_(mesh_),
+          analyzer_(mesh_),
+          compare_sphere(false),
+          compare_cube(false)
+    {
         set_draw_mode("Hidden Line");
         add_help_item("Shift + MMB", "Geod. distances for selected vertex", 5);
     }
@@ -28,8 +28,6 @@ public:
     virtual bool load_mesh(const char *filename) override;
 
 protected:
-
-    virtual void keyboard(int key, int code, int action, int mod) override;
     virtual void process_imgui() override;
     virtual void update_mesh() override;
     virtual void draw(const std::string &_draw_mode) override;
@@ -40,7 +38,6 @@ protected:
     void open_holes();
 
 private:
-
     Smoothing smooth_;
     SpectralProcessing analyzer_;
 

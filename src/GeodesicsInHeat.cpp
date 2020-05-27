@@ -10,10 +10,9 @@
 
 //=============================================================================
 
-GeodesicsInHeat::GeodesicsInHeat(pmp::SurfaceMesh &mesh, bool geodist, bool euklid)
-        : mesh_(mesh),
-          geodist_sphere_(geodist),
-          geodist_cube_(euklid) 
+GeodesicsInHeat::GeodesicsInHeat(pmp::SurfaceMesh &mesh, bool geodist,
+                                 bool euklid)
+    : mesh_(mesh), geodist_sphere_(geodist), geodist_cube_(euklid)
 {
     SurfaceNormals::compute_face_normals(mesh_);
     mesh_.add_face_property<Point>("f:point");
@@ -23,7 +22,7 @@ GeodesicsInHeat::GeodesicsInHeat(pmp::SurfaceMesh &mesh, bool geodist, bool eukl
 
 //-----------------------------------------------------------------------------
 
-GeodesicsInHeat::~GeodesicsInHeat() 
+GeodesicsInHeat::~GeodesicsInHeat()
 {
     auto area_points = mesh_.face_property<Point>("f:point");
     auto area_weights = mesh_.face_property<Eigen::VectorXd>("f:weights");
@@ -34,11 +33,12 @@ GeodesicsInHeat::~GeodesicsInHeat()
 
 //-----------------------------------------------------------------------------
 
-double GeodesicsInHeat::averageEdgeLength(const pmp::SurfaceMesh &mesh) 
+double GeodesicsInHeat::averageEdgeLength(const pmp::SurfaceMesh &mesh)
 {
     double avgLen = 0.;
 
-    for (auto e : mesh.edges()) {
+    for (auto e : mesh.edges())
+    {
         avgLen += mesh.edge_length(e);
     }
 
@@ -47,7 +47,7 @@ double GeodesicsInHeat::averageEdgeLength(const pmp::SurfaceMesh &mesh)
 
 //-----------------------------------------------------------------------------
 
-void GeodesicsInHeat::buildGradientOperator() 
+void GeodesicsInHeat::buildGradientOperator()
 {
     gradOperator.resize(3 * mesh_.n_faces(), mesh_.n_vertices());
     setup_Gradient_Matrix(mesh_, gradOperator);
@@ -55,7 +55,7 @@ void GeodesicsInHeat::buildGradientOperator()
 
 //-----------------------------------------------------------------------------
 
-void GeodesicsInHeat::buildDivOperator() 
+void GeodesicsInHeat::buildDivOperator()
 {
     divOperator.resize(mesh_.n_vertices(), 3 * mesh_.n_faces());
     setup_Divergence_Matrix(mesh_, divOperator);
@@ -64,7 +64,7 @@ void GeodesicsInHeat::buildDivOperator()
 //-----------------------------------------------------------------------------
 
 void GeodesicsInHeat::getDistance(const int vertex, Eigen::VectorXd &dist,
-                                  Eigen::VectorXd &orthodist) 
+                                  Eigen::VectorXd &orthodist)
 {
     // diffuse heat
     const int N = mesh_.n_vertices();
@@ -81,7 +81,7 @@ void GeodesicsInHeat::getDistance(const int vertex, Eigen::VectorXd &dist,
     Eigen::VectorXd grad = gradOperator * heat;
 
     // normalize gradients
-    for (int i = 0; i < grad.rows(); i += 3) 
+    for (int i = 0; i < grad.rows(); i += 3)
     {
         dvec3 &g = *reinterpret_cast<dvec3 *>(&grad[i]);
         double n = norm(g);
@@ -89,9 +89,7 @@ void GeodesicsInHeat::getDistance(const int vertex, Eigen::VectorXd &dist,
             g /= n;
     }
 
-
     dist = cholL.solve(divOperator * (-grad));
-
 
     orthodist.resize(dist.size());
 
@@ -103,15 +101,18 @@ void GeodesicsInHeat::getDistance(const int vertex, Eigen::VectorXd &dist,
     Vertex v0 = Vertex(vertex);
     double rms = 0.0;
     double radius = norm(mesh_.position(v0));
-    for (auto v : mesh_.vertices()) {
+    for (auto v : mesh_.vertices())
+    {
         distances[v] = dist[k];
 
-        if (geodist_sphere_) {
+        if (geodist_sphere_)
+        {
             orthodist(k) = great_circle_distance(v0, v, radius);
             rms += (dist(k) - orthodist(k)) * (dist(k) - orthodist(k));
         }
 
-        if (geodist_cube_) {
+        if (geodist_cube_)
+        {
             orthodist(k) = norm(mesh_.position(v0) - mesh_.position(v));
             rms += (dist(k) - orthodist(k)) * (dist(k) - orthodist(k));
         }
@@ -119,19 +120,20 @@ void GeodesicsInHeat::getDistance(const int vertex, Eigen::VectorXd &dist,
         k++;
     }
 
-    if (geodist_sphere_) {
+    if (geodist_sphere_)
+    {
         rms /= mesh_.n_vertices();
         rms = sqrt(rms);
         rms /= radius;
 
         std::cout << "Distance deviation sphere: " << rms << std::endl;
     }
-    if (geodist_cube_) {
+    if (geodist_cube_)
+    {
         rms /= mesh_.n_vertices();
         rms = sqrt(rms);
 
         std::cout << "Distance deviation Plane: " << rms << std::endl;
-
     }
 
     distance_to_texture_coordinates();
@@ -141,11 +143,11 @@ void GeodesicsInHeat::getDistance(const int vertex, Eigen::VectorXd &dist,
 
 //-----------------------------------------------------------------------------
 
-void GeodesicsInHeat::compute_geodesics(bool lumped) 
+void GeodesicsInHeat::compute_geodesics(bool lumped)
 {
     pos.resize(mesh_.n_vertices(), 3);
 
-    for (int i = 0; i < (int) mesh_.n_vertices(); ++i)
+    for (int i = 0; i < (int)mesh_.n_vertices(); ++i)
         for (int j = 0; j < 3; ++j)
             pos(i, j) = mesh_.positions()[i][j];
 
@@ -167,24 +169,30 @@ void GeodesicsInHeat::compute_geodesics(bool lumped)
 
 //-----------------------------------------------------------------------------
 
-void GeodesicsInHeat::distance_to_texture_coordinates() const 
+void GeodesicsInHeat::distance_to_texture_coordinates() const
 {
     auto distances = mesh_.get_vertex_property<Scalar>("v:dist");
     assert(distances);
 
     // find maximum distance
     Scalar maxdist(0);
-    for (auto v : mesh_.vertices()) {
-        if (distances[v] <= FLT_MAX) {
+    for (auto v : mesh_.vertices())
+    {
+        if (distances[v] <= FLT_MAX)
+        {
             maxdist = std::max(maxdist, distances[v]);
         }
     }
 
     auto tex = mesh_.vertex_property<TexCoord>("v:tex");
-    for (auto v : mesh_.vertices()) {
-        if (distances[v] <= FLT_MAX) {
+    for (auto v : mesh_.vertices())
+    {
+        if (distances[v] <= FLT_MAX)
+        {
             tex[v] = TexCoord(distances[v] / maxdist, 0.0);
-        } else {
+        }
+        else
+        {
             tex[v] = TexCoord(1.0, 0.0);
         }
     }
@@ -197,18 +205,21 @@ void GeodesicsInHeat::distance_to_texture_coordinates() const
 
 //-----------------------------------------------------------------------------
 
-double GeodesicsInHeat::great_circle_distance(Vertex v, Vertex vv, double r) 
+double GeodesicsInHeat::great_circle_distance(Vertex v, Vertex vv, double r)
 {
     double dis;
-    if (v == vv) {
+    if (v == vv)
+    {
         return 0.0;
     }
     Normal n = pmp::SurfaceNormals::compute_vertex_normal(mesh_, v);
     Normal nn = pmp::SurfaceNormals::compute_vertex_normal(mesh_, vv);
     double delta_sigma = acos(dot(n, nn));
-    if (std::isnan(delta_sigma)) {
+    if (std::isnan(delta_sigma))
+    {
         dis = haversine_distance(v, vv, r);
-        if (std::isnan(delta_sigma)) {
+        if (std::isnan(delta_sigma))
+        {
             dis = vincenty_distance(v, vv, r);
         }
         return dis;
@@ -219,7 +230,7 @@ double GeodesicsInHeat::great_circle_distance(Vertex v, Vertex vv, double r)
 
 //-----------------------------------------------------------------------------
 
-double GeodesicsInHeat::haversine_distance(Vertex v, Vertex vv, double r) 
+double GeodesicsInHeat::haversine_distance(Vertex v, Vertex vv, double r)
 {
     Point p = mesh_.position(v);
     Point pp = mesh_.position(vv);
@@ -243,7 +254,7 @@ double GeodesicsInHeat::haversine_distance(Vertex v, Vertex vv, double r)
 
 //-----------------------------------------------------------------------------
 
-double GeodesicsInHeat::vincenty_distance(Vertex v, Vertex vv, double r) 
+double GeodesicsInHeat::vincenty_distance(Vertex v, Vertex vv, double r)
 {
     //  special case of the Vincenty formula for an ellipsoid with equal major and minor axes
     Point p = mesh_.position(v);
