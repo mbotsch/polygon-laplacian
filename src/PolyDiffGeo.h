@@ -15,28 +15,38 @@ using namespace pmp;
 
 //=============================================================================
 
+// global setting: whether to clamp cotan negative weights to zero (default: false)
 extern bool clamp_cotan_;
+
+// global settings: whether to lump the mass matrix (default: true)
+extern bool lump_mass_matrix_;
 
 //=============================================================================
 
+// compute (sparse) stiffness matrix for polygonal mesh
 void setup_stiffness_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &S);
 
-void setup_mass_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &M,
-                       bool lumped = true);
+// compute (sparse) mass matrix for polygonal mesh.
+// global variable lump_mass_matrix_ determines whether the mass
+// matrix will be lumped.
+void setup_mass_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &M);
 
-void localStiffnessMatrix(const Eigen::MatrixXd &poly,
-                          const Eigen::Vector3d &min, Eigen::VectorXd &w,
-                          Eigen::MatrixXd &L);
+// compute (dense) stiffness matrix for one polygon
+void setup_polygon_stiffness_matrix(const Eigen::MatrixXd &poly,
+                                    const Eigen::Vector3d &min,
+                                    Eigen::VectorXd &w, Eigen::MatrixXd &L);
 
-void localMassMatrix(const Eigen::MatrixXd &poly, const Eigen::Vector3d &min,
-                     Eigen::VectorXd &w, Eigen::MatrixXd &M);
+// compute (dense) mass matrix for one polygon
+void setup_polygon_mass_matrix(const Eigen::MatrixXd &poly,
+                               const Eigen::Vector3d &min, Eigen::VectorXd &w,
+                               Eigen::MatrixXd &M);
 
-//!compute the transformation matrix for an arbitrary mesh that inserts a chosen point per face .
+// lump matrix M to a diagonal matrix where the entries are the sums of the rows
+void lump_matrix(Eigen::SparseMatrix<double> &M);
+
+// compute the transformation matrix for an arbitrary mesh that inserts a chosen point per face
 void setup_prolongation_matrix(SurfaceMesh &mesh,
                                Eigen::SparseMatrix<double> &A);
-
-//! Computes a diagonal matrix where the entries are the sums of the rows.
-void lump_matrix(Eigen::SparseMatrix<double> &D);
 
 //! barycenter/my_centroid of mesh, computed as area-weighted mean of vertices.
 Point area_weighted_centroid(const SurfaceMesh &mesh);
@@ -47,25 +57,23 @@ double face_area(const SurfaceMesh &mesh, Face f);
 //! surface area of the polygon mesh.
 Scalar polygon_surface_area(const SurfaceMesh &mesh);
 
-
 //! Computes the gradient on a triangle formed by the points i, j and k.
 Eigen::Vector3d gradient_hat_function(Point i, Point j, Point k);
 
 //! Computes the Gradient matrix for any given mesh.
-void setup_Gradient_Matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &G);
+void setup_gradient_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &G);
 
 //! Computes the Divergence matrix for any given mesh.
-void setup_Divergence_Matrix(SurfaceMesh &mesh,
+void setup_divergence_matrix(SurfaceMesh &mesh,
                              Eigen::SparseMatrix<double> &Gt);
 
 //! Computes the diagonal mass matrix W needed for L = DWG.
-void setup_Gradient_Mass_Matrix(SurfaceMesh &mesh,
+void setup_gradient_mass_matrix(SurfaceMesh &mesh,
                                 Eigen::SparseMatrix<double> &M);
 
 //! Computes the squared triangle area minimizing points and its affine combination weights
 //! for each face and stores it in a prior defined property.
 void setup_face_point_properties(SurfaceMesh &mesh);
-
 
 //! Computes the affine weights for the polygon vertices to form the implicit vertex.
 void find_polygon_weights(const Eigen::MatrixXd &poly,

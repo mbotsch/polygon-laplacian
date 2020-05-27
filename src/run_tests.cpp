@@ -15,21 +15,12 @@
 
 //=============================================================================
 
-using namespace pmp;
+// to lump or not to lump the mass matrix?
+bool LUMP_MASS_MATRIX = true;
 
 //=============================================================================
 
-enum MassMatrix
-{
-    lumped = true,
-    unlumped = false
-};
-
-enum ObjectShape
-{
-    Sphere = 1,
-    Plane = 2
-};
+using namespace pmp;
 
 //=============================================================================
 
@@ -59,6 +50,8 @@ void dualize(SurfaceMesh &mesh)
 
 //----------------------------------------------------------------------------
 
+// normalize all vertex position to norm=1.
+// used to turn an almost spherical mesh into a spherical mesh.
 void normalize(SurfaceMesh &mesh)
 {
     for (auto v : mesh.vertices())
@@ -69,55 +62,54 @@ void normalize(SurfaceMesh &mesh)
 
 //----------------------------------------------------------------------------
 
+// compute curvature on a spherical mesh, compare to ground truth (=1)
 void test_curvatures(SurfaceMesh &mesh)
 {
-    Curvature analyzer(mesh, true);
+    Curvature curvature(mesh);
+    curvature.compute();
 
-    std::cout << "lumped mass matrix: " << std::endl;
-    analyzer.analyze_curvature(lumped);
-    std::cout << "un-lumped mass matrix: " << std::endl;
-    analyzer.analyze_curvature(unlumped);
+    double rms = 0.0;
+    for (auto v : mesh.vertices())
+    {
+        double c = curvature(v);
+        rms += (c - 1.0) * (c - 1.0);
+    }
+    rms /= (double)mesh.n_vertices();
+    rms = sqrt(rms);
+
+    std::cout << "rms error = " << rms << std::endl;
 }
 
 //----------------------------------------------------------------------------
 
-void test_geodesics(SurfaceMesh &mesh, ObjectShape shape)
+void test_geodesics(SurfaceMesh &mesh)
 {
-    Eigen::VectorXd dist, geodist;
+    Vertex source(0);
+    const Point p = mesh.position(source);
 
-    bool sphere = (shape == Sphere);
-    bool plane = (shape == Plane);
+    GeodesicsInHeat heat(mesh);
+    heat.precompute();
+    heat.compute_distance_from(source);
 
-    std::cout << "lumped mass matrix: " << std::endl;
+    double rms = 0.0;
+    for (auto v : mesh.vertices())
     {
-        GeodesicsInHeat heat(mesh, sphere, plane);
-        heat.compute_geodesics(lumped);
-        heat.getDistance(0, dist, geodist);
+        double geodesic_dist = heat(v);
+        double euclidean_dist = distance(p, mesh.position(v));
+        rms += pow(geodesic_dist - euclidean_dist, 2.0);
     }
+    rms /= (double)mesh.n_vertices();
+    rms = sqrt(rms);
 
-    std::cout << "un-lumped mass matrix: " << std::endl;
-    {
-        GeodesicsInHeat heat(mesh, sphere, plane);
-        heat.compute_geodesics(unlumped);
-        heat.getDistance(0, dist, geodist);
-    }
+    std::cout << "rms error = " << rms << std::endl;
 }
 
 //----------------------------------------------------------------------------
 
 void test_sphericalH(SurfaceMesh &mesh)
 {
-    std::cout << "lumped mass matrix: " << std::endl;
-    {
-        SpectralProcessing analyzer_(mesh);
-        analyzer_.analyze_sphericalHarmonics(lumped);
-    }
-
-    std::cout << "un-lumped mass matrix: " << std::endl;
-    {
-        SpectralProcessing analyzer_(mesh);
-        analyzer_.analyze_sphericalHarmonics(unlumped);
-    }
+    SpectralProcessing analyzer_(mesh);
+    analyzer_.analyze_sphericalHarmonics();
 }
 
 //----------------------------------------------------------------------------
@@ -191,51 +183,43 @@ int main(int argc, char **argv)
     // counter for tests
     int test = 1;
 
+    // whether or not we lump the mass matrix
+    lump_mass_matrix_ = LUMP_MASS_MATRIX;
+    std::cout << "\nlump mass matrix = " << lump_mass_matrix_ << "\n\n";
+
     // compute mean curvature
     if (!mytest || mytest == test)
     {
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "Curvature: Hex sphere\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/unit-sphere.off");
             dualize(mesh);
             normalize(mesh);
             test_curvatures(mesh);
         }
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "Curvature: Fine sphere\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/unit-sphere.off");
             SurfaceSubdivision(mesh).catmull_clark();
             normalize(mesh);
             test_curvatures(mesh);
         }
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "Curvature: Regular sphere\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/quad-sphere.off");
             normalize(mesh);
             test_curvatures(mesh);
         }
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "Curvature : Noisy sphere\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/noisy-sphere.off");
             normalize(mesh);
             test_curvatures(mesh);
@@ -247,47 +231,35 @@ int main(int argc, char **argv)
     if (!mytest || mytest == test)
     {
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "SH: Hex sphere\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/unit-sphere.off");
             dualize(mesh);
             normalize(mesh);
             test_sphericalH(mesh);
         }
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "SH: Fine sphere\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/unit-sphere.off");
             SurfaceSubdivision(mesh).catmull_clark();
             normalize(mesh);
             test_sphericalH(mesh);
         }
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "SH: Regular sphere\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/quad-sphere.off");
             normalize(mesh);
             test_sphericalH(mesh);
         }
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "SH: Noisy sphere\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/noisy-sphere.off");
             normalize(mesh);
             test_sphericalH(mesh);
@@ -299,79 +271,59 @@ int main(int argc, char **argv)
     if (!mytest || mytest == test)
     {
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "Geodist: Subdivided quad plane \n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/quad-plane.obj");
             SurfaceSubdivision(mesh).catmull_clark();
-            test_geodesics(mesh, Plane);
+            test_geodesics(mesh);
         }
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "Geodist: Quad plane\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/quad-plane.obj");
-            test_geodesics(mesh, Plane);
+            test_geodesics(mesh);
         }
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "Geodist: L-plane\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/L-plane.obj");
-            test_geodesics(mesh, Plane);
+            test_geodesics(mesh);
         }
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "Geodist: Tetris-plane (non-starshaped)\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/tetris.obj");
-            test_geodesics(mesh, Plane);
+            test_geodesics(mesh);
         }
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "Geodist:  Tetris-plane (non-convex)\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/tetris_2.obj");
-            test_geodesics(mesh, Plane);
+            test_geodesics(mesh);
         }
     }
+    ++test;
 
     // measure timings
     if (!mytest || mytest == test)
     {
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "Timings: Hexasphere\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/Spheres/hexaSphere.off");
             timing_construction(mesh);
             timing_solution(mesh);
         }
         {
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
+            std::cout
+                << "----------------------------------------------------\n";
             std::cout << "Timings: Fine Sphere\n";
-            std::cout << "----------------------------------------------------"
-                      << std::endl;
-
             mesh.read("../data/Spheres/fineSphere.off");
             timing_construction(mesh);
             timing_solution(mesh);

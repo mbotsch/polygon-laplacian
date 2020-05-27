@@ -17,39 +17,35 @@ using namespace pmp;
 class GeodesicsInHeat
 {
 public:
-    GeodesicsInHeat(pmp::SurfaceMesh &mesh, bool geodist, bool euklid);
+    // construct with mesh
+    GeodesicsInHeat(SurfaceMesh &mesh);
 
+    // destructor: cleans up allocated properties
     ~GeodesicsInHeat();
 
-    void getDistance(const int vertex, Eigen::VectorXd &dist,
-                     Eigen::VectorXd &orthodist);
+    // setup and factorize matrices
+    void precompute();
 
+    // compute geodesic distance of all vertices from source vertex
+    void compute_distance_from(Vertex source);
+
+    // get previously computed distance of vertex v
+    Scalar operator()(Vertex v) const
+    {
+        assert(distance_);
+        return distance_[v];
+    }
+
+    // convert distances to texture coordinates for visualization
     void distance_to_texture_coordinates() const;
 
-    void compute_geodesics(bool lumped = true);
+private:
+    double avg_edge_length() const;
 
 private:
     SurfaceMesh &mesh_;
+    VertexProperty<Scalar> distance_;
 
-    Eigen::MatrixXd pos;
-
-    Eigen::SparseMatrix<double> divOperator, gradOperator;
-
+    Eigen::SparseMatrix<double> divergence_, gradient_;
     Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> cholL, cholA;
-
-    double averageEdgeLength(const pmp::SurfaceMesh &mesh);
-
-    void geodist_intrinsic_delauney(const int vertex, Eigen::VectorXd &dist);
-
-    void buildDivOperator();
-
-    void buildGradientOperator();
-
-    double great_circle_distance(Vertex v, Vertex vv, double r = 1.0);
-
-    double haversine_distance(Vertex v, Vertex vv, double r = 1.0);
-
-    double vincenty_distance(Vertex v, Vertex vv, double r = 1.0);
-
-    bool geodist_sphere_, geodist_cube_;
 };

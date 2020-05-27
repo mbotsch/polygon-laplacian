@@ -28,7 +28,7 @@ public:
     // evaluate an Associated Legendre Polynomial P(l,m,x) at x
     double P(int l, int m, double x);
 
-    void analyze_sphericalHarmonics(bool lumped);
+    void analyze_sphericalHarmonics();
 
 private:
     SurfaceMesh &mesh;

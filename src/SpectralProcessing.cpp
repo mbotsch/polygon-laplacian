@@ -9,6 +9,7 @@
 //=============================================================================
 
 using namespace pmp;
+
 using SparseMatrix = Eigen::SparseMatrix<double>;
 using Triplet = Eigen::Triplet<double>;
 
@@ -84,7 +85,7 @@ double SpectralProcessing::sphericalHarmonic(Point p, int l, int m)
 
 //----------------------------------------------------------------------------
 
-void SpectralProcessing::analyze_sphericalHarmonics(bool lumped)
+void SpectralProcessing::analyze_sphericalHarmonics()
 {
     auto points = mesh.vertex_property<Point>("v:point");
 
@@ -98,7 +99,7 @@ void SpectralProcessing::analyze_sphericalHarmonics(bool lumped)
     Eigen::VectorXd y(mesh.n_vertices());
     Eigen::SparseMatrix<double> S, M;
     setup_stiffness_matrix(mesh, S);
-    setup_mass_matrix(mesh, M, lumped);
+    setup_mass_matrix(mesh, M);
     Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
     solver.analyzePattern(M);
     solver.factorize(M);

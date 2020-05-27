@@ -14,17 +14,28 @@ using Triplet = Eigen::Triplet<double>;
 
 //=============================================================================
 
-void Curvature::analyze_curvature(bool lumped)
+Curvature::Curvature(SurfaceMesh &mesh) : mesh_(mesh) {}
+
+//-----------------------------------------------------------------------------
+
+Curvature::~Curvature()
+{
+    if (curvatures_)
+        mesh_.remove_vertex_property(curvatures_);
+}
+
+//-----------------------------------------------------------------------------
+
+void Curvature::compute()
 {
     if (!mesh_.n_vertices())
         return;
 
     // properties
     auto points = mesh_.vertex_property<Point>("v:point");
-    auto curvatures = mesh_.add_vertex_property<Scalar>("v:curv");
+    curvatures_ = mesh_.add_vertex_property<Scalar>("v:curv");
 
     const unsigned int nv = mesh_.n_vertices();
-    unsigned k = 0;
 
     Eigen::SparseMatrix<double> M, S;
     Eigen::MatrixXd B(nv, 3), B_(mesh_.n_edges(), 3);
@@ -38,7 +49,7 @@ void Curvature::analyze_curvature(bool lumped)
     }
 
     setup_stiffness_matrix(mesh_, S);
-    setup_mass_matrix(mesh_, M, lumped);
+    setup_mass_matrix(mesh_, M);
 
     Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> solver;
     solver.analyzePattern(M);
@@ -46,55 +57,30 @@ void Curvature::analyze_curvature(bool lumped)
     Eigen::MatrixXd X = solver.solve(S * B);
     B = X;
 
-    // compute mean curvature
-    for (unsigned int i = 0; i < nv; i++)
-    {
-        H(i) = B.row(i).norm();
-    }
-
-    double rms = 0.0;
+    unsigned i = 0;
     for (auto v : mesh_.vertices())
     {
-        curvatures[v] = fabs(0.5 * H(k));
-
-        if (compare_to_sphere)
-        {
-            double c = 0.5 * H(k);
-            rms += (c - 1.0) * (c - 1.0);
-        }
-        k++;
+        curvatures_[v] = 0.5 * B.row(i).norm();
+        i++;
     }
-
-    if (compare_to_sphere)
-    {
-        rms /= (double)nv;
-        rms = sqrt(rms);
-
-        std::cout << "Curvature deviation: " << rms << std::endl;
-    }
-
-    curvature_to_texture_coordinates();
-
-    mesh_.remove_vertex_property<Scalar>(curvatures);
 }
 
 //-----------------------------------------------------------------------------
 
 void Curvature::curvature_to_texture_coordinates() const
 {
-    auto curvatures = mesh_.get_vertex_property<Scalar>("v:curv");
-    assert(curvatures);
+    if (!curvatures_)
+        return;
 
     // sort curvature values
     std::vector<Scalar> values;
     values.reserve(mesh_.n_vertices());
     for (auto v : mesh_.vertices())
     {
-        values.push_back(curvatures[v]);
+        values.push_back(curvatures_[v]);
     }
     std::sort(values.begin(), values.end());
     unsigned int n = values.size() - 1;
-    //std::cout << "curvature: [" << values[0] << ", " << values[n - 1] << "]\n";
 
     // clamp upper/lower 5%
     unsigned int i = n / 20;
@@ -108,14 +94,14 @@ void Curvature::curvature_to_texture_coordinates() const
         kmax = std::max(fabs(kmin), fabs(kmax));
         for (auto v : mesh_.vertices())
         {
-            tex[v] = TexCoord((0.5f * curvatures[v] / kmax) + 0.5f, 0.0);
+            tex[v] = TexCoord((0.5f * curvatures_[v] / kmax) + 0.5f, 0.0);
         }
     }
     else // unsigned
     {
         for (auto v : mesh_.vertices())
         {
-            tex[v] = TexCoord((curvatures[v] - kmin) / (kmax - kmin), 0.0);
+            tex[v] = TexCoord((curvatures_[v] - kmin) / (kmax - kmin), 0.0);
         }
     }
 

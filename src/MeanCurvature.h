@@ -16,19 +16,29 @@ using namespace pmp;
 class Curvature
 {
 public:
-    Curvature(SurfaceMesh &mesh, bool compare)
-        : mesh_(mesh), compare_to_sphere(compare)
-    {}
+    // construct with mesh
+    Curvature(SurfaceMesh &mesh);
 
-    //! Visualizes the mean curvature of our mesh.
-    void analyze_curvature(bool lumped = true);
+    // destructor (deletes vertex property "v:curv")
+    ~Curvature();
+
+    // compute per-vertex mean curvatures, store them in vertex
+    // property "v:curv"
+    void compute();
+
+    // return (absolute) mean curvature of vertex v
+    Scalar operator()(Vertex v) const
+    {
+        assert(curvatures_);
+        return curvatures_[v];
+    }
+
+    // convert curvature values ("v:curv") to 1D texture coordinates
+    void curvature_to_texture_coordinates() const;
 
 private:
     SurfaceMesh &mesh_;
-    bool compare_to_sphere;
-
-    //! convert curvature values ("v:curv") to 1D texture coordinates
-    void curvature_to_texture_coordinates() const;
+    VertexProperty<Scalar> curvatures_;
 };
 
 //=============================================================================

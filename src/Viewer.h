@@ -7,7 +7,6 @@
 
 #include <pmp/visualization/MeshViewer.h>
 #include "Smoothing.h"
-#include "SpectralProcessing.h"
 
 //=============================================================================
 
@@ -15,11 +14,7 @@ class Viewer : public pmp::MeshViewer
 {
 public:
     Viewer(const char *title, int width, int height)
-        : MeshViewer(title, width, height),
-          smooth_(mesh_),
-          analyzer_(mesh_),
-          compare_sphere(false),
-          compare_cube(false)
+        : MeshViewer(title, width, height), smooth_(mesh_)
     {
         set_draw_mode("Hidden Line");
         add_help_item("Shift + MMB", "Geod. distances for selected vertex", 5);
@@ -39,11 +34,6 @@ protected:
 
 private:
     Smoothing smooth_;
-    SpectralProcessing analyzer_;
-
-    bool compare_sphere;
-    bool compare_cube;
-
     std::vector<Face> holes_;
 };
 

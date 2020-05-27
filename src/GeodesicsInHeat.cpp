@@ -5,18 +5,17 @@
 
 #include "GeodesicsInHeat.h"
 #include "PolyDiffGeo.h"
-#include <pmp/algorithms/SurfaceNormals.h>
 #include <cfloat>
 
 //=============================================================================
 
-GeodesicsInHeat::GeodesicsInHeat(pmp::SurfaceMesh &mesh, bool geodist,
-                                 bool euklid)
-    : mesh_(mesh), geodist_sphere_(geodist), geodist_cube_(euklid)
+GeodesicsInHeat::GeodesicsInHeat(SurfaceMesh &mesh) : mesh_(mesh)
 {
-    SurfaceNormals::compute_face_normals(mesh_);
     mesh_.add_face_property<Point>("f:point");
     mesh_.add_face_property<Eigen::VectorXd>("f:weights");
+
+    distance_ = mesh_.add_vertex_property<Scalar>("v:dist");
+
     setup_face_point_properties(mesh_);
 }
 
@@ -25,60 +24,41 @@ GeodesicsInHeat::GeodesicsInHeat(pmp::SurfaceMesh &mesh, bool geodist,
 GeodesicsInHeat::~GeodesicsInHeat()
 {
     auto area_points = mesh_.face_property<Point>("f:point");
-    auto area_weights = mesh_.face_property<Eigen::VectorXd>("f:weights");
+    if (area_points)
+        mesh_.remove_face_property(area_points);
 
-    mesh_.remove_face_property(area_points);
-    mesh_.remove_face_property(area_weights);
+    auto area_weights = mesh_.face_property<Eigen::VectorXd>("f:weights");
+    if (area_weights)
+        mesh_.remove_face_property(area_weights);
+
+    mesh_.remove_vertex_property(distance_);
 }
 
 //-----------------------------------------------------------------------------
 
-double GeodesicsInHeat::averageEdgeLength(const pmp::SurfaceMesh &mesh)
+double GeodesicsInHeat::avg_edge_length() const
 {
     double avgLen = 0.;
-
-    for (auto e : mesh.edges())
-    {
-        avgLen += mesh.edge_length(e);
-    }
-
-    return avgLen / mesh.n_edges();
+    for (auto e : mesh_.edges())
+        avgLen += mesh_.edge_length(e);
+    return avgLen / (Scalar)mesh_.n_edges();
 }
 
 //-----------------------------------------------------------------------------
 
-void GeodesicsInHeat::buildGradientOperator()
-{
-    gradOperator.resize(3 * mesh_.n_faces(), mesh_.n_vertices());
-    setup_Gradient_Matrix(mesh_, gradOperator);
-}
-
-//-----------------------------------------------------------------------------
-
-void GeodesicsInHeat::buildDivOperator()
-{
-    divOperator.resize(mesh_.n_vertices(), 3 * mesh_.n_faces());
-    setup_Divergence_Matrix(mesh_, divOperator);
-}
-
-//-----------------------------------------------------------------------------
-
-void GeodesicsInHeat::getDistance(const int vertex, Eigen::VectorXd &dist,
-                                  Eigen::VectorXd &orthodist)
+void GeodesicsInHeat::compute_distance_from(Vertex source)
 {
     // diffuse heat
     const int N = mesh_.n_vertices();
 
-    auto distances = mesh_.add_vertex_property<Scalar>("v:dist");
-
     Eigen::SparseVector<double> b(N);
     Eigen::SparseMatrix<double> W;
-    setup_Gradient_Mass_Matrix(mesh_, W);
-    b.coeffRef(vertex) = 1.;
+    setup_gradient_mass_matrix(mesh_, W);
+    b.coeffRef(source.idx()) = 1.;
 
     // compute gradients
     Eigen::VectorXd heat = cholA.solve(b);
-    Eigen::VectorXd grad = gradOperator * heat;
+    Eigen::VectorXd grad = gradient_ * heat;
 
     // normalize gradients
     for (int i = 0; i < grad.rows(); i += 3)
@@ -89,80 +69,43 @@ void GeodesicsInHeat::getDistance(const int vertex, Eigen::VectorXd &dist,
             g /= n;
     }
 
-    dist = cholL.solve(divOperator * (-grad));
-
-    orthodist.resize(dist.size());
+    Eigen::VectorXd dist = cholL.solve(divergence_ * (-grad));
 
     double mi = dist.minCoeff();
     for (int i = 0; i < dist.rows(); ++i)
         dist[i] -= mi;
 
     int k = 0;
-    Vertex v0 = Vertex(vertex);
-    double rms = 0.0;
-    double radius = norm(mesh_.position(v0));
     for (auto v : mesh_.vertices())
     {
-        distances[v] = dist[k];
-
-        if (geodist_sphere_)
-        {
-            orthodist(k) = great_circle_distance(v0, v, radius);
-            rms += (dist(k) - orthodist(k)) * (dist(k) - orthodist(k));
-        }
-
-        if (geodist_cube_)
-        {
-            orthodist(k) = norm(mesh_.position(v0) - mesh_.position(v));
-            rms += (dist(k) - orthodist(k)) * (dist(k) - orthodist(k));
-        }
-
+        distance_[v] = dist[k];
         k++;
     }
-
-    if (geodist_sphere_)
-    {
-        rms /= mesh_.n_vertices();
-        rms = sqrt(rms);
-        rms /= radius;
-
-        std::cout << "Distance deviation sphere: " << rms << std::endl;
-    }
-    if (geodist_cube_)
-    {
-        rms /= mesh_.n_vertices();
-        rms = sqrt(rms);
-
-        std::cout << "Distance deviation Plane: " << rms << std::endl;
-    }
-
-    distance_to_texture_coordinates();
-
-    mesh_.remove_vertex_property<Scalar>(distances);
 }
 
 //-----------------------------------------------------------------------------
 
-void GeodesicsInHeat::compute_geodesics(bool lumped)
+void GeodesicsInHeat::precompute()
 {
-    pos.resize(mesh_.n_vertices(), 3);
-
-    for (int i = 0; i < (int)mesh_.n_vertices(); ++i)
-        for (int j = 0; j < 3; ++j)
-            pos(i, j) = mesh_.positions()[i][j];
-
-    buildGradientOperator();
-    buildDivOperator();
-
     Eigen::SparseMatrix<double> S, M, A, M_bar;
 
+    // setup divergence and gradient
+    setup_gradient_matrix(mesh_, gradient_);
+    setup_divergence_matrix(mesh_, divergence_);
+
+    // setup stiffness and mass matrix
     setup_stiffness_matrix(mesh_, S);
-    setup_mass_matrix(mesh_, M, lumped);
-    const double h = pow(averageEdgeLength(mesh_), 2);
+    setup_mass_matrix(mesh_, M);
+
+    // setup heat flow matrix
+    const double h = pow(avg_edge_length(), 2);
     A = M - h * S;
+
+    // factorize stiffness matrix
     cholL.analyzePattern(S);
     cholL.factorize(S);
 
+    // factorize heat flow matrix
     cholA.analyzePattern(A);
     cholA.factorize(A);
 }
@@ -201,91 +144,6 @@ void GeodesicsInHeat::distance_to_texture_coordinates() const
     auto htex = mesh_.get_halfedge_property<TexCoord>("h:tex");
     if (htex)
         mesh_.remove_halfedge_property(htex);
-}
-
-//-----------------------------------------------------------------------------
-
-double GeodesicsInHeat::great_circle_distance(Vertex v, Vertex vv, double r)
-{
-    double dis;
-    if (v == vv)
-    {
-        return 0.0;
-    }
-    Normal n = pmp::SurfaceNormals::compute_vertex_normal(mesh_, v);
-    Normal nn = pmp::SurfaceNormals::compute_vertex_normal(mesh_, vv);
-    double delta_sigma = acos(dot(n, nn));
-    if (std::isnan(delta_sigma))
-    {
-        dis = haversine_distance(v, vv, r);
-        if (std::isnan(delta_sigma))
-        {
-            dis = vincenty_distance(v, vv, r);
-        }
-        return dis;
-    }
-
-    return r * delta_sigma;
-}
-
-//-----------------------------------------------------------------------------
-
-double GeodesicsInHeat::haversine_distance(Vertex v, Vertex vv, double r)
-{
-    Point p = mesh_.position(v);
-    Point pp = mesh_.position(vv);
-
-    double lamda1 = atan2(p[1], p[0]) + M_PI;
-    double phi1 = M_PI / 2.0 - acos(p[2] / r);
-
-    double lamda2 = atan2(pp[1], pp[0]) + M_PI;
-    double phi2 = M_PI / 2.0 - acos(pp[2] / r);
-
-    double d_lamda = fabs(lamda1 - lamda2);
-    double d_phi = fabs(phi1 - phi2);
-
-    double a = pow(sin(d_phi / 2), 2) +
-               cos(phi1) * cos(phi2) * pow(sin(d_lamda / 2), 2);
-
-    double d_sigma = 2 * asin(sqrt(a));
-
-    return r * d_sigma;
-}
-
-//-----------------------------------------------------------------------------
-
-double GeodesicsInHeat::vincenty_distance(Vertex v, Vertex vv, double r)
-{
-    //  special case of the Vincenty formula for an ellipsoid with equal major and minor axes
-    Point p = mesh_.position(v);
-    Point pp = mesh_.position(vv);
-
-    double lamda1 = atan2(p[1], p[0]) + M_PI;
-    double phi1 = M_PI / 2.0 - acos(p[2] / r);
-
-    double lamda2 = atan2(pp[1], pp[0]) + M_PI;
-    double phi2 = M_PI / 2.0 - acos(pp[2] / r);
-
-    double d_lamda = fabs(lamda1 - lamda2);
-
-    // Numerator
-    double a = pow(cos(phi2) * sin(d_lamda), 2);
-
-    double b = cos(phi1) * sin(phi2);
-    double c = sin(phi1) * cos(phi2) * cos(d_lamda);
-    double d = pow(b - c, 2);
-
-    double e = sqrt(a + d);
-
-    // Denominator
-    double f = sin(phi1) * sin(phi2);
-    double g = cos(phi1) * cos(phi2) * cos(d_lamda);
-
-    double h = f + g;
-
-    double d_sigma = atan2(e, h);
-
-    return r * d_sigma;
 }
 
 //=============================================================================

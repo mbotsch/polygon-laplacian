@@ -19,8 +19,249 @@ using Triplet = Eigen::Triplet<double>;
 
 const double eps = 1e-10;
 bool clamp_cotan_ = false;
+bool lump_mass_matrix_ = true;
 
 //=============================================================================
+
+void setup_stiffness_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &S)
+{
+    const int nv = mesh.n_vertices();
+
+    Eigen::MatrixXd Si;
+    Eigen::Vector3d min;
+    Eigen::VectorXd w;
+    Eigen::MatrixXd poly;
+
+    std::vector<Eigen::Triplet<double>> trip;
+
+    for (Face f : mesh.faces())
+    {
+        // collect polygon vertices
+        const int n = mesh.valence(f);
+        poly.resize(n, 3);
+        int i = 0;
+        for (Vertex v : mesh.vertices(f))
+        {
+            for (int h = 0; h < 3; h++)
+            {
+                poly.row(i)(h) = mesh.position(v)[h];
+            }
+            i++;
+        }
+
+        // compute affine weights of virtual vertex
+        find_polygon_weights(poly, w);
+
+        // compute position of virtual vertex
+        Eigen::Vector3d min = poly.transpose() * w;
+
+        // setup element stiffness matrix
+        setup_polygon_stiffness_matrix(poly, min, w, Si);
+
+        // assemble to global stiffness matrix
+        int j = 0;
+        int k;
+        for (Vertex v : mesh.vertices(f))
+        {
+            k = 0;
+            for (Vertex vv : mesh.vertices(f))
+            {
+                trip.emplace_back(vv.idx(), v.idx(), -Si(k, j));
+                k++;
+            }
+            j++;
+        }
+    }
+
+    // build sparse matrix from triplets
+    S.resize(nv, nv);
+    S.setFromTriplets(trip.begin(), trip.end());
+}
+
+//----------------------------------------------------------------------------------
+
+void setup_polygon_stiffness_matrix(const Eigen::MatrixXd &poly,
+                                    const Eigen::Vector3d &min,
+                                    Eigen::VectorXd &w, Eigen::MatrixXd &L)
+{
+    const int n = (int)poly.rows();
+    L.resize(n, n);
+    L.setZero();
+
+    Eigen::VectorXd ln(n + 1);
+    ln.setZero();
+
+    double l[3], l2[3];
+
+    for (int i = 0; i < n; ++i)
+    {
+        const int i1 = (i + 1) % n;
+
+        l2[2] = (poly.row(i) - poly.row(i1)).squaredNorm();
+        l2[0] = (poly.row(i1) - min.transpose()).squaredNorm();
+        l2[1] = (poly.row(i) - min.transpose()).squaredNorm();
+
+        l[0] = sqrt(l2[0]);
+        l[1] = sqrt(l2[1]);
+        l[2] = sqrt(l2[2]);
+
+        const double arg = (l[0] + (l[1] + l[2])) * (l[2] - (l[0] - l[1])) *
+                           (l[2] + (l[0] - l[1])) * (l[0] + (l[1] - l[2]));
+        const double area = 0.5 * sqrt(arg);
+        if (area > 1e-7)
+        {
+            l[0] = 0.25 * (l2[1] + l2[2] - l2[0]) / area;
+            l[1] = 0.25 * (l2[2] + l2[0] - l2[1]) / area;
+            l[2] = 0.25 * (l2[0] + l2[1] - l2[2]) / area;
+
+            L(i1, i1) += l[0];
+            L(i, i) += l[1];
+            L(i1, i) -= l[2];
+            L(i, i1) -= l[2];
+            L(i, i) += l[2];
+            L(i1, i1) += l[2];
+
+            ln(i1) -= l[0];
+            ln(i) -= l[1];
+            ln(n) += l[0] + l[1];
+        }
+    }
+
+    // sandwiching with (local) restriction and prolongation matrix
+    for (int j = 0; j < n; ++j)
+        for (int i = 0; i < n; ++i)
+            L(i, j) += w(i) * ln(j) + w(j) * ln(i) + w(i) * w(j) * ln(n);
+}
+
+//----------------------------------------------------------------------------------
+
+void setup_mass_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &M)
+{
+    const int nv = mesh.n_vertices();
+
+    Eigen::MatrixXd Mi;
+    Eigen::Vector3d min;
+    Eigen::VectorXd w;
+    Eigen::MatrixXd poly;
+
+    std::vector<Eigen::Triplet<double>> trip;
+
+    for (Face f : mesh.faces())
+    {
+        // collect polygon vertices
+        const int n = mesh.valence(f);
+        poly.resize(n, 3);
+        int i = 0;
+        for (Vertex v : mesh.vertices(f))
+        {
+            for (int h = 0; h < 3; h++)
+            {
+                poly.row(i)(h) = mesh.position(v)[h];
+            }
+            i++;
+        }
+
+        // compute affine weights of virtual vertex
+        find_polygon_weights(poly, w);
+
+        // compute position of virtual vertex
+        Eigen::Vector3d min = poly.transpose() * w;
+
+        // setup element mass matrix
+        setup_polygon_mass_matrix(poly, min, w, Mi);
+
+        // assemble into global mass matrix
+        int j = 0;
+        int k;
+        for (Vertex v : mesh.vertices(f))
+        {
+            k = 0;
+            for (Vertex vv : mesh.vertices(f))
+            {
+                trip.emplace_back(vv.idx(), v.idx(), Mi(k, j));
+                k++;
+            }
+            j++;
+        }
+    }
+
+    // build sparse matrix from triplets
+    M.resize(nv, nv);
+    M.setFromTriplets(trip.begin(), trip.end());
+
+    // optional: lump mass matrix
+    if (lump_mass_matrix_)
+        lump_matrix(M);
+}
+
+//----------------------------------------------------------------------------------
+
+void setup_polygon_mass_matrix(const Eigen::MatrixXd &poly,
+                               const Eigen::Vector3d &min, Eigen::VectorXd &w,
+                               Eigen::MatrixXd &M)
+{
+    const int n = (int)poly.rows();
+    M.resize(n, n);
+
+    M.setZero();
+
+    Eigen::VectorXd ln(n + 1);
+    ln.setZero();
+
+    double l[3], l2[3];
+
+    for (int i = 0; i < n; ++i)
+    {
+        const int i1 = (i + 1) % n;
+
+        l2[2] = (poly.row(i) - poly.row(i1)).squaredNorm();
+        l2[0] = (poly.row(i1) - min.transpose()).squaredNorm();
+        l2[1] = (poly.row(i) - min.transpose()).squaredNorm();
+
+        l[0] = sqrt(l2[0]);
+        l[1] = sqrt(l2[1]);
+        l[2] = sqrt(l2[2]);
+
+        const double arg = (l[0] + (l[1] + l[2])) * (l[2] - (l[0] - l[1])) *
+                           (l[2] + (l[0] - l[1])) * (l[0] + (l[1] - l[2]));
+        const double area = 0.25 * sqrt(arg);
+
+        l[0] = 1.0 / 6.0 * area;
+        l[1] = 1.0 / 12.0 * area;
+
+        M(i1, i1) += 1.0 / 6.0 * area;
+        M(i, i) += 1.0 / 6.0 * area;
+        M(i1, i) += 1.0 / 12.0 * area;
+        M(i, i1) += 1.0 / 12.0 * area;
+
+        ln(i1) += l[1];
+        ln(i) += l[1];
+        ln(n) += l[0];
+    }
+
+    // sandwiching with (local) restriction and prolongation matrix
+    for (int j = 0; j < n; ++j)
+        for (int i = 0; i < n; ++i)
+            M(i, j) += w(i) * ln(j) + w(j) * ln(i) + w(i) * w(j) * ln(n);
+}
+
+//-----------------------------------------------------------------------------
+
+void lump_matrix(SparseMatrix &D)
+{
+    std::vector<Triplet> triplets;
+    triplets.reserve(D.rows() * 6);
+    for (int k = 0; k < D.outerSize(); ++k)
+    {
+        for (SparseMatrix::InnerIterator it(D, k); it; ++it)
+        {
+            triplets.emplace_back(it.row(), it.row(), it.value());
+        }
+    }
+    D.setFromTriplets(triplets.begin(), triplets.end());
+}
+
+//----------------------------------------------------------------------------------
 
 void setup_prolongation_matrix(SurfaceMesh &mesh, SparseMatrix &A)
 {
@@ -54,22 +295,6 @@ void setup_prolongation_matrix(SurfaceMesh &mesh, SparseMatrix &A)
     // build sparse matrix from triplets
     A.resize(nv + nf, nv);
     A.setFromTriplets(tripletsA.begin(), tripletsA.end());
-}
-
-//-----------------------------------------------------------------------------
-
-void lump_matrix(SparseMatrix &D)
-{
-    std::vector<Triplet> triplets;
-    triplets.reserve(D.rows() * 6);
-    for (int k = 0; k < D.outerSize(); ++k)
-    {
-        for (SparseMatrix::InnerIterator it(D, k); it; ++it)
-        {
-            triplets.emplace_back(it.row(), it.row(), it.value());
-        }
-    }
-    D.setFromTriplets(triplets.begin(), triplets.end());
 }
 
 //-----------------------------------------------------------------------------
@@ -152,7 +377,7 @@ Eigen::Vector3d gradient_hat_function(Point i, Point j, Point k)
 
 //-----------------------------------------------------------------------------
 
-void setup_Gradient_Matrix(SurfaceMesh &mesh, SparseMatrix &G)
+void setup_gradient_matrix(SurfaceMesh &mesh, SparseMatrix &G)
 {
     SparseMatrix A;
     setup_prolongation_matrix(mesh, A);
@@ -201,17 +426,17 @@ void setup_Gradient_Matrix(SurfaceMesh &mesh, SparseMatrix &G)
 
 //-----------------------------------------------------------------------------
 
-void setup_Divergence_Matrix(SurfaceMesh &mesh, SparseMatrix &Gt)
+void setup_divergence_matrix(SurfaceMesh &mesh, SparseMatrix &Gt)
 {
     SparseMatrix G, M;
-    setup_Gradient_Matrix(mesh, G);
-    setup_Gradient_Mass_Matrix(mesh, M);
+    setup_gradient_matrix(mesh, G);
+    setup_gradient_mass_matrix(mesh, M);
     Gt = -G.transpose() * M;
 }
 
 //-----------------------------------------------------------------------------
 
-void setup_Gradient_Mass_Matrix(SurfaceMesh &mesh,
+void setup_gradient_mass_matrix(SurfaceMesh &mesh,
                                 Eigen::SparseMatrix<double> &M)
 {
     auto area_points = mesh.get_face_property<Point>("f:point");
@@ -340,222 +565,10 @@ void find_polygon_weights(const Eigen::MatrixXd &poly, Eigen::VectorXd &weights)
 
     Eigen::VectorXd b_(val + 1);
     b_.block(0, 0, val, 1) = 4 * b;
-    //    b_.block(0, 0, val, 1) = b;
 
     b_(val) = 1.;
 
     weights = M.completeOrthogonalDecomposition().solve(b_).topRows(val);
-}
-
-//----------------------------------------------------------------------------------
-
-void setup_stiffness_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &S)
-{
-    const int nv = mesh.n_vertices();
-
-    Eigen::MatrixXd Si;
-    Eigen::Vector3d min;
-    Eigen::VectorXd w;
-    Eigen::MatrixXd poly;
-
-    std::vector<Eigen::Triplet<double>> trip;
-
-    for (Face f : mesh.faces())
-    {
-        const int n = mesh.valence(f);
-        poly.resize(n, 3);
-        int i = 0;
-        for (Vertex v : mesh.vertices(f))
-        {
-            for (int h = 0; h < 3; h++)
-            {
-                poly.row(i)(h) = mesh.position(v)[h];
-            }
-            i++;
-        }
-
-        // compute weights for the polygon
-        find_polygon_weights(poly, w);
-
-        Eigen::Vector3d min = poly.transpose() * w;
-        localStiffnessMatrix(poly, min, w, Si);
-
-        int j = 0;
-        int k;
-        for (Vertex v : mesh.vertices(f))
-        {
-            k = 0;
-            for (Vertex vv : mesh.vertices(f))
-            {
-                trip.emplace_back(vv.idx(), v.idx(), Si(k, j));
-                k++;
-            }
-            j++;
-        }
-    }
-    S.resize(nv, nv);
-    S.setFromTriplets(trip.begin(), trip.end());
-    S *= -1.0;
-}
-
-//----------------------------------------------------------------------------------
-
-void localStiffnessMatrix(const Eigen::MatrixXd &poly,
-                          const Eigen::Vector3d &min, Eigen::VectorXd &w,
-                          Eigen::MatrixXd &L)
-{
-    const int n = (int)poly.rows();
-    L.resize(n, n);
-    L.setZero();
-
-    Eigen::VectorXd ln(n + 1);
-    ln.setZero();
-
-    double l[3], l2[3];
-
-    for (int i = 0; i < n; ++i)
-    {
-        const int i1 = (i + 1) % n;
-
-        l2[2] = (poly.row(i) - poly.row(i1)).squaredNorm();
-        l2[0] = (poly.row(i1) - min.transpose()).squaredNorm();
-        l2[1] = (poly.row(i) - min.transpose()).squaredNorm();
-
-        l[0] = sqrt(l2[0]);
-        l[1] = sqrt(l2[1]);
-        l[2] = sqrt(l2[2]);
-
-        const double arg = (l[0] + (l[1] + l[2])) * (l[2] - (l[0] - l[1])) *
-                           (l[2] + (l[0] - l[1])) * (l[0] + (l[1] - l[2]));
-        const double area = 0.5 * sqrt(arg);
-        if (area > 1e-7)
-        {
-            l[0] = 0.25 * (l2[1] + l2[2] - l2[0]) / area;
-            l[1] = 0.25 * (l2[2] + l2[0] - l2[1]) / area;
-            l[2] = 0.25 * (l2[0] + l2[1] - l2[2]) / area;
-
-            L(i1, i1) += l[0];
-            L(i, i) += l[1];
-            L(i1, i) -= l[2];
-            L(i, i1) -= l[2];
-            L(i, i) += l[2];
-            L(i1, i1) += l[2];
-
-            ln(i1) -= l[0];
-            ln(i) -= l[1];
-            ln(n) += l[0] + l[1];
-        }
-    }
-
-    // Sandwiching
-    for (int j = 0; j < n; ++j)
-        for (int i = 0; i < n; ++i)
-            L(i, j) += w(i) * ln(j) + w(j) * ln(i) + w(i) * w(j) * ln(n);
-}
-
-//----------------------------------------------------------------------------------
-
-void localMassMatrix(const Eigen::MatrixXd &poly, const Eigen::Vector3d &min,
-                     Eigen::VectorXd &w, Eigen::MatrixXd &M)
-{
-    const int n = (int)poly.rows();
-    M.resize(n, n);
-
-    M.setZero();
-
-    Eigen::VectorXd ln(n + 1);
-    ln.setZero();
-
-    double l[3], l2[3];
-
-    for (int i = 0; i < n; ++i)
-    {
-        const int i1 = (i + 1) % n;
-
-        l2[2] = (poly.row(i) - poly.row(i1)).squaredNorm();
-        l2[0] = (poly.row(i1) - min.transpose()).squaredNorm();
-        l2[1] = (poly.row(i) - min.transpose()).squaredNorm();
-
-        l[0] = sqrt(l2[0]);
-        l[1] = sqrt(l2[1]);
-        l[2] = sqrt(l2[2]);
-
-        const double arg = (l[0] + (l[1] + l[2])) * (l[2] - (l[0] - l[1])) *
-                           (l[2] + (l[0] - l[1])) * (l[0] + (l[1] - l[2]));
-        const double area = 0.25 * sqrt(arg);
-
-        l[0] = 1.0 / 6.0 * area;
-        l[1] = 1.0 / 12.0 * area;
-
-        M(i1, i1) += 1.0 / 6.0 * area;
-        M(i, i) += 1.0 / 6.0 * area;
-        M(i1, i) += 1.0 / 12.0 * area;
-        M(i, i1) += 1.0 / 12.0 * area;
-
-        ln(i1) += l[1];
-        ln(i) += l[1];
-        ln(n) += l[0];
-    }
-    // Sandwiching
-    for (int j = 0; j < n; ++j)
-        for (int i = 0; i < n; ++i)
-            M(i, j) += w(i) * ln(j) + w(j) * ln(i) + w(i) * w(j) * ln(n);
-}
-
-//----------------------------------------------------------------------------------
-
-void setup_mass_matrix(SurfaceMesh &mesh, Eigen::SparseMatrix<double> &M,
-                       bool lumped)
-{
-    const int nv = mesh.n_vertices();
-
-    Eigen::MatrixXd Mi;
-    Eigen::Vector3d min;
-    Eigen::VectorXd w;
-    Eigen::MatrixXd poly;
-
-    std::vector<Eigen::Triplet<double>> trip;
-
-    for (Face f : mesh.faces())
-    {
-        const int n = mesh.valence(f);
-        poly.resize(n, 3);
-        int i = 0;
-        for (Vertex v : mesh.vertices(f))
-        {
-            for (int h = 0; h < 3; h++)
-            {
-                poly.row(i)(h) = mesh.position(v)[h];
-            }
-            i++;
-        }
-
-        // setup polygon weights
-        find_polygon_weights(poly, w);
-
-        Eigen::Vector3d min = poly.transpose() * w;
-        localMassMatrix(poly, min, w, Mi);
-
-        int j = 0;
-        int k;
-        for (Vertex v : mesh.vertices(f))
-        {
-            k = 0;
-            for (Vertex vv : mesh.vertices(f))
-            {
-                trip.emplace_back(vv.idx(), v.idx(), Mi(k, j));
-                k++;
-            }
-            j++;
-        }
-    }
-    M.resize(nv, nv);
-    M.setFromTriplets(trip.begin(), trip.end());
-
-    if (lumped)
-    {
-        lump_matrix(M);
-    }
 }
 
 //=============================================================================

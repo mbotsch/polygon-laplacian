@@ -140,7 +140,7 @@ bool Parameterization::harmonic_free_boundary()
 
     // find first eigenvalue above threshold (1e-8).
     // Eigen::SelfAdjointEigenSolver seems to produce sorted eigenvalues.
-    // Not sure if this is guaranteed though! 
+    // Not sure if this is guaranteed though!
     // Eigen::EigenSolver does not follow this convention!
     int evid = 0;
 

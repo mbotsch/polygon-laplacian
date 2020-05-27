@@ -119,14 +119,11 @@ void Viewer::process_imgui()
     // curvature visualization
     if (ImGui::CollapsingHeader("Curvature", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        static bool curvature_sphere_ = false;
-        ImGui::Checkbox("Compare to unit sphere curvatures",
-                        &curvature_sphere_);
-
         if (ImGui::Button("Mean Curvature"))
         {
-            Curvature analyzer(mesh_, curvature_sphere_);
-            analyzer.analyze_curvature();
+            Curvature curv(mesh_);
+            curv.compute();
+            curv.curvature_to_texture_coordinates();
             mesh_.use_cold_warm_texture();
             update_mesh();
             set_draw_mode("Texture");
@@ -135,20 +132,12 @@ void Viewer::process_imgui()
     if (ImGui::CollapsingHeader("Geodesics in Heat",
                                 ImGuiTreeNodeFlags_DefaultOpen))
     {
-        static bool geodesic_sphere_ = false;
-        static bool geodesic_cube_ = false;
-        ImGui::Checkbox("Compare distances to arc lengths", &geodesic_sphere_);
-        ImGui::Checkbox("Compare to euclidean distances", &geodesic_cube_);
-        compare_sphere = geodesic_sphere_;
-        compare_cube = geodesic_cube_;
         if (ImGui::Button("Compute Distances Vertex 0"))
         {
-            GeodesicsInHeat heat(mesh_, geodesic_sphere_, geodesic_cube_);
-            heat.compute_geodesics();
-
-            Eigen::VectorXd dist, geodist;
-            heat.getDistance(0, dist, geodist);
-
+            GeodesicsInHeat heat(mesh_);
+            heat.precompute();
+            heat.compute_distance_from(Vertex(0));
+            heat.distance_to_texture_coordinates();
             mesh_.use_checkerboard_texture();
             update_mesh();
             set_draw_mode("Texture");
@@ -258,12 +247,10 @@ void Viewer::mouse(int button, int action, int mods)
         Vertex v = pick_vertex(x, y);
         if (mesh_.is_valid(v))
         {
-            GeodesicsInHeat heat(mesh_, compare_sphere, compare_cube);
-            heat.compute_geodesics();
-
-            Eigen::VectorXd dist, geodist;
-            heat.getDistance(v.idx(), dist, geodist);
-
+            GeodesicsInHeat heat(mesh_);
+            heat.precompute();
+            heat.compute_distance_from(v);
+            heat.distance_to_texture_coordinates();
             update_mesh();
             mesh_.use_checkerboard_texture();
             set_draw_mode("Texture");
