@@ -39,8 +39,10 @@ GeodesicsInHeat::~GeodesicsInHeat()
 double GeodesicsInHeat::avg_edge_length() const
 {
     double avgLen = 0.;
+
     for (auto e : mesh_.edges())
         avgLen += mesh_.edge_length(e);
+
     return avgLen / (Scalar)mesh_.n_edges();
 }
 
@@ -48,19 +50,27 @@ double GeodesicsInHeat::avg_edge_length() const
 
 void GeodesicsInHeat::compute_distance_from(Vertex source)
 {
-    // diffuse heat
     const int N = mesh_.n_vertices();
 
+    // precomputation done?
+    if (gradient_.nonZeros() == 0)
+    {
+        precompute();
+    }
+
+    // i'th basis function
     Eigen::SparseVector<double> b(N);
+    b.coeffRef(source.idx()) = 1.0;
+
+    // gradient mass matrix 
     Eigen::SparseMatrix<double> W;
     setup_gradient_mass_matrix(mesh_, W);
-    b.coeffRef(source.idx()) = 1.;
 
-    // compute gradients
+    // solve heat diffusion, gives distance gradients
     Eigen::VectorXd heat = cholA.solve(b);
     Eigen::VectorXd grad = gradient_ * heat;
 
-    // normalize gradients
+    // normalize distance gradients
     for (int i = 0; i < grad.rows(); i += 3)
     {
         dvec3 &g = *reinterpret_cast<dvec3 *>(&grad[i]);
@@ -69,12 +79,15 @@ void GeodesicsInHeat::compute_distance_from(Vertex source)
             g /= n;
     }
 
+    // solve Poisson system to get distances
     Eigen::VectorXd dist = cholL.solve(divergence_ * (-grad));
 
+    // shift such that smallest distance is zero
     double mi = dist.minCoeff();
     for (int i = 0; i < dist.rows(); ++i)
         dist[i] -= mi;
 
+    // assign distances to vertex property
     int k = 0;
     for (auto v : mesh_.vertices())
     {

@@ -9,7 +9,7 @@
 #include <pmp/Timer.h>
 
 #include "MeanCurvature.h"
-#include "SpectralProcessing.h"
+#include "SphericalHarmonics.h"
 #include "GeodesicsInHeat.h"
 #include "PolyDiffGeo.h"
 
@@ -24,6 +24,8 @@ using namespace pmp;
 
 //=============================================================================
 
+// dualize a polygon mesh.
+// vertex positions of dual mesh are centroids of primal mesh.
 void dualize(SurfaceMesh &mesh)
 {
     SurfaceMesh dual;
@@ -62,7 +64,8 @@ void normalize(SurfaceMesh &mesh)
 
 //----------------------------------------------------------------------------
 
-// compute curvature on a spherical mesh, compare to ground truth (=1)
+// compute curvature on a spherical mesh.
+// compare to ground truth, i.e., 1
 void test_curvatures(SurfaceMesh &mesh)
 {
     Curvature curvature(mesh);
@@ -82,13 +85,14 @@ void test_curvatures(SurfaceMesh &mesh)
 
 //----------------------------------------------------------------------------
 
+// compute geodesic distances from vertex 0 on a planar mesh.
+// compare to ground truth, i.e., Euclidean distance.
 void test_geodesics(SurfaceMesh &mesh)
 {
     Vertex source(0);
     const Point p = mesh.position(source);
 
     GeodesicsInHeat heat(mesh);
-    heat.precompute();
     heat.compute_distance_from(source);
 
     double rms = 0.0;
@@ -106,69 +110,120 @@ void test_geodesics(SurfaceMesh &mesh)
 
 //----------------------------------------------------------------------------
 
+// compute Eigenvectors of Laplacian on a spherical mesh.
+// compare Eigenvectors to true spherical harmonics up to 9th band.
 void test_sphericalH(SurfaceMesh &mesh)
 {
-    SpectralProcessing analyzer_(mesh);
-    analyzer_.analyze_sphericalHarmonics();
-}
+    double error;
+    double sum = 0.0;
 
-//----------------------------------------------------------------------------
+    Eigen::VectorXd y(mesh.n_vertices());
 
-void timing_construction(SurfaceMesh mesh)
-{
-    Eigen::SparseMatrix<double> S;
-
-    pmp::Timer t;
-    t.start();
-
-    for (int i = 0; i < 20; i++)
-        setup_stiffness_matrix(mesh, S);
-
-    t.stop();
-    std::cout << "Time for stiffness matrix construction : "
-              << t.elapsed() / 20.0 << "ms" << std::endl;
-}
-
-//----------------------------------------------------------------------------
-
-void timing_solution(SurfaceMesh mesh)
-{
-    auto points = mesh.vertex_property<Point>("v:point");
-    Eigen::SparseMatrix<double> S, M, A;
-
+    // setup mass and stiffness matrix
+    Eigen::SparseMatrix<double> S, M;
     setup_stiffness_matrix(mesh, S);
     setup_mass_matrix(mesh, M);
 
-    Eigen::MatrixXd B(mesh.n_vertices(), 3);
+    // pre-factorize mass matrix (might not be diagonal)
+    Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
+    solver.analyzePattern(M);
+    solver.factorize(M);
 
-    for (auto v : mesh.vertices())
+    for (int l=1; l<=8; l++)
     {
-        B(v.idx(), 0) = points[v][0];
-        B(v.idx(), 1) = points[v][1];
-        B(v.idx(), 2) = points[v][2];
+        double eval = -l * (l + 1);
+        for (int m = -l; m <= l; m++)
+        {
+            for (auto v : mesh.vertices())
+            {
+                y(v.idx()) = spherical_harmonic(mesh.position(v), l, m);
+            }
+            y.normalize();
+
+            Eigen::MatrixXd X = solver.solve(S * y);
+
+            error = (y - 1.0 / eval * X).transpose() * M * (y - 1.0 / eval * X);
+
+            sum += error;
+        }
     }
 
+    std::cout << "sh error = " << sum << std::endl;
+}
+
+//----------------------------------------------------------------------------
+
+// measure time for constructing stiffness matrix
+void timing_construction(SurfaceMesh mesh)
+{
+    const int trials = 20;
+
+    pmp::Timer t;
+    t.start();
+
+    Eigen::SparseMatrix<double> S;
+    for (int i = 0; i < trials; i++)
+    {
+        setup_stiffness_matrix(mesh, S);
+    }
+
+    t.stop();
+    std::cout << "stiffness matrix construction: "
+              << t.elapsed() / trials << "ms\n";
+}
+
+//----------------------------------------------------------------------------
+
+// measure time for factoring/solving Poisson system
+void timing_solution(SurfaceMesh mesh)
+{
+    auto points = mesh.vertex_property<Point>("v:point");
+
+    // setup stiffness matrix
+    Eigen::SparseMatrix<double> S;
+    setup_stiffness_matrix(mesh, S);
+
+    // setup mass matrix
+    Eigen::SparseMatrix<double> M;
+    setup_mass_matrix(mesh, M);
+
+    // setup rhs 
+    Eigen::MatrixXd B(mesh.n_vertices(), 3);
+    for (auto v : mesh.vertices())
+    {
+        B.row(v.idx()) = static_cast<Eigen::Vector3d>(points[v]);
+    }
+
+    // setup implicit smoothing system
+    Eigen::SparseMatrix<double> A;
     A = M - 0.1 * S;
     Eigen::MatrixXd M_B = M * B;
 
+    
     static Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> solver;
+    const int trials = 10;
 
+
+    // time for factoring matrix
     pmp::Timer t;
-
     t.start();
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < trials; i++)
     {
         solver.compute(A);
     }
     t.stop();
-    std::cout << "Time to factorize system matrix A : " << t.elapsed() / 10.0
-              << "ms" << std::endl;
+    std::cout << "factorize matrix: " << t.elapsed() / trials
+              << "ms\n";
 
+
+    // time for back-substitution
     t.start();
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < trials; i++)
+    {
         Eigen::MatrixXd X = solver.solve(M_B);
+    }
     t.stop();
-    std::cout << "Time to solve: " << t.elapsed() / 10.0 << "ms" << std::endl;
+    std::cout << "back-substitution: " << t.elapsed() / trials << "ms\n";
 }
 
 //----------------------------------------------------------------------------
@@ -191,8 +246,7 @@ int main(int argc, char **argv)
     if (!mytest || mytest == test)
     {
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "Curvature: Hex sphere\n";
             mesh.read("../data/unit-sphere.off");
             dualize(mesh);
@@ -200,8 +254,7 @@ int main(int argc, char **argv)
             test_curvatures(mesh);
         }
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "Curvature: Fine sphere\n";
             mesh.read("../data/unit-sphere.off");
             SurfaceSubdivision(mesh).catmull_clark();
@@ -209,16 +262,14 @@ int main(int argc, char **argv)
             test_curvatures(mesh);
         }
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "Curvature: Regular sphere\n";
             mesh.read("../data/quad-sphere.off");
             normalize(mesh);
             test_curvatures(mesh);
         }
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "Curvature : Noisy sphere\n";
             mesh.read("../data/noisy-sphere.off");
             normalize(mesh);
@@ -231,8 +282,7 @@ int main(int argc, char **argv)
     if (!mytest || mytest == test)
     {
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "SH: Hex sphere\n";
             mesh.read("../data/unit-sphere.off");
             dualize(mesh);
@@ -240,8 +290,7 @@ int main(int argc, char **argv)
             test_sphericalH(mesh);
         }
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "SH: Fine sphere\n";
             mesh.read("../data/unit-sphere.off");
             SurfaceSubdivision(mesh).catmull_clark();
@@ -249,16 +298,14 @@ int main(int argc, char **argv)
             test_sphericalH(mesh);
         }
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "SH: Regular sphere\n";
             mesh.read("../data/quad-sphere.off");
             normalize(mesh);
             test_sphericalH(mesh);
         }
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "SH: Noisy sphere\n";
             mesh.read("../data/noisy-sphere.off");
             normalize(mesh);
@@ -271,37 +318,32 @@ int main(int argc, char **argv)
     if (!mytest || mytest == test)
     {
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "Geodist: Subdivided quad plane \n";
             mesh.read("../data/quad-plane.obj");
             SurfaceSubdivision(mesh).catmull_clark();
             test_geodesics(mesh);
         }
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "Geodist: Quad plane\n";
             mesh.read("../data/quad-plane.obj");
             test_geodesics(mesh);
         }
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "Geodist: L-plane\n";
             mesh.read("../data/L-plane.obj");
             test_geodesics(mesh);
         }
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "Geodist: Tetris-plane (non-starshaped)\n";
             mesh.read("../data/tetris.obj");
             test_geodesics(mesh);
         }
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "Geodist:  Tetris-plane (non-convex)\n";
             mesh.read("../data/tetris_2.obj");
             test_geodesics(mesh);
@@ -313,16 +355,14 @@ int main(int argc, char **argv)
     if (!mytest || mytest == test)
     {
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "Timings: Hexasphere\n";
             mesh.read("../data/Spheres/hexaSphere.off");
             timing_construction(mesh);
             timing_solution(mesh);
         }
         {
-            std::cout
-                << "----------------------------------------------------\n";
+            std::cout << "-----------------------------------------------\n";
             std::cout << "Timings: Fine Sphere\n";
             mesh.read("../data/Spheres/fineSphere.off");
             timing_construction(mesh);

@@ -135,7 +135,6 @@ void Viewer::process_imgui()
         if (ImGui::Button("Compute Distances Vertex 0"))
         {
             GeodesicsInHeat heat(mesh_);
-            heat.precompute();
             heat.compute_distance_from(Vertex(0));
             heat.distance_to_texture_coordinates();
             mesh_.use_checkerboard_texture();
@@ -248,7 +247,6 @@ void Viewer::mouse(int button, int action, int mods)
         if (mesh_.is_valid(v))
         {
             GeodesicsInHeat heat(mesh_);
-            heat.precompute();
             heat.compute_distance_from(v);
             heat.distance_to_texture_coordinates();
             update_mesh();

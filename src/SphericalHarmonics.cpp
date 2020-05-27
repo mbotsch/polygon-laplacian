@@ -3,7 +3,7 @@
 // Distributed under MIT license, see file LICENSE for details.
 //=============================================================================
 
-#include "SpectralProcessing.h"
+#include "SphericalHarmonics.h"
 #include "PolyDiffGeo.h"
 
 //=============================================================================
@@ -24,7 +24,7 @@ double factorial(int n)
 
 //----------------------------------------------------------------------------
 
-double SpectralProcessing::scale(int l, int m)
+double scale(int l, int m)
 {
     double temp =
         ((2.0 * l + 1.0) * factorial(l - m)) / (4.0 * M_PI * factorial(l + m));
@@ -33,7 +33,7 @@ double SpectralProcessing::scale(int l, int m)
 
 //----------------------------------------------------------------------------
 
-double SpectralProcessing::P(int l, int m, double x)
+double P(int l, int m, double x)
 {
     // evaluate an Associated Legendre Polynomial P(l,m,x) at x
     double pmm = 1.0;
@@ -64,7 +64,7 @@ double SpectralProcessing::P(int l, int m, double x)
 
 //----------------------------------------------------------------------------
 
-double SpectralProcessing::sphericalHarmonic(Point p, int l, int m)
+double spherical_harmonic(Point p, int l, int m)
 {
     // l is the band, range [0..n]
     // m in the range [-l..l]
@@ -81,47 +81,6 @@ double SpectralProcessing::sphericalHarmonic(Point p, int l, int m)
         return sqrt2 * scale(l, m) * cos(m * phi) * P(l, m, cos(theta));
     else
         return sqrt2 * scale(l, -m) * sin(-m * phi) * P(l, -m, cos(theta));
-}
-
-//----------------------------------------------------------------------------
-
-void SpectralProcessing::analyze_sphericalHarmonics()
-{
-    auto points = mesh.vertex_property<Point>("v:point");
-
-    // comparing eigenvectors up to the 9th Band of legendre polynomials
-
-    int band = 8;
-
-    double error;
-    double sum = 0.0;
-
-    Eigen::VectorXd y(mesh.n_vertices());
-    Eigen::SparseMatrix<double> S, M;
-    setup_stiffness_matrix(mesh, S);
-    setup_mass_matrix(mesh, M);
-    Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
-    solver.analyzePattern(M);
-    solver.factorize(M);
-
-    for (int l = 1; l <= band; l++)
-    {
-        double eval = -l * (l + 1);
-        for (int m = -l; m <= l; m++)
-        {
-            for (auto v : mesh.vertices())
-            {
-                y(v.idx()) = sphericalHarmonic(points[v], l, m);
-            }
-            y.normalize();
-            Eigen::MatrixXd X = solver.solve(S * y);
-            error = (y - 1.0 / eval * X).transpose() * M * (y - 1.0 / eval * X);
-
-            sum += error;
-        }
-    }
-
-    std::cout << "Error SH: " << sum << std::endl;
 }
 
 //=============================================================================

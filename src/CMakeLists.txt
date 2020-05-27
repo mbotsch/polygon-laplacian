@@ -1,6 +1,6 @@
-set(HEADERS MeanCurvature.h  PolyDiffGeo.h GeodesicsInHeat.h  Parameterization.h Smoothing.h  SpectralProcessing.h)
+set(HEADERS MeanCurvature.h  PolyDiffGeo.h GeodesicsInHeat.h  Parameterization.h Smoothing.h  SphericalHarmonics.h)
 
-set(SOURCES MeanCurvature.cpp PolyDiffGeo.cpp GeodesicsInHeat.cpp  Parameterization.cpp Smoothing.cpp  SpectralProcessing.cpp)
+set(SOURCES MeanCurvature.cpp PolyDiffGeo.cpp GeodesicsInHeat.cpp  Parameterization.cpp Smoothing.cpp  SphericalHarmonics.cpp)
 
 add_library(poly STATIC ${HEADERS} ${SOURCES})
 target_link_libraries(poly pmp)

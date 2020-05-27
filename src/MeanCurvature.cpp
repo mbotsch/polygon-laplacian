@@ -43,9 +43,7 @@ void Curvature::compute()
 
     for (auto v : mesh_.vertices())
     {
-        B(v.idx(), 0) = points[v][0];
-        B(v.idx(), 1) = points[v][1];
-        B(v.idx(), 2) = points[v][2];
+        B.row(v.idx()) = static_cast<Eigen::Vector3d>(points[v]);
     }
 
     setup_stiffness_matrix(mesh_, S);
@@ -55,12 +53,11 @@ void Curvature::compute()
     solver.analyzePattern(M);
     solver.factorize(M);
     Eigen::MatrixXd X = solver.solve(S * B);
-    B = X;
 
     unsigned i = 0;
     for (auto v : mesh_.vertices())
     {
-        curvatures_[v] = 0.5 * B.row(i).norm();
+        curvatures_[v] = 0.5 * X.row(i).norm();
         i++;
     }
 }
