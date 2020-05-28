@@ -33,12 +33,12 @@ void setup_mass_matrix(const SurfaceMesh &mesh, Eigen::SparseMatrix<double> &M);
 
 // compute (dense) stiffness matrix for one polygon
 void setup_polygon_stiffness_matrix(const Eigen::MatrixXd &polygon,
-                                    const Eigen::Vector3d &vvertex,
-                                    const Eigen::VectorXd &vweights, Eigen::MatrixXd &L);
+                                    const Eigen::VectorXd &vweights, 
+                                    Eigen::MatrixXd &L);
 
 // compute (dense) mass matrix for one polygon
 void setup_polygon_mass_matrix(const Eigen::MatrixXd &polygon,
-                               const Eigen::Vector3d &vvertex, const Eigen::VectorXd &vweights,
+                               const Eigen::VectorXd &vweights,
                                Eigen::MatrixXd &M);
 
 // lump matrix M to a diagonal matrix where the entries are the sums of the rows
