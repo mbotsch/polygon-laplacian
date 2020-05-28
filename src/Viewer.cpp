@@ -148,7 +148,29 @@ void Viewer::process_imgui()
 
 void Viewer::draw(const std::string &draw_mode)
 {
+    // normal mesh draw
     mesh_.draw(projection_matrix_, modelview_matrix_, draw_mode);
+    
+    // draw uv layout
+    if (mesh_.has_vertex_property("v:tex"))
+    {
+        // clear depth buffer
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        // setup viewport
+        GLint size = std::min(width(), height()) / 4;
+        glViewport(width() - size - 1, height() - size - 1, size, size);
+
+        // setup matrices
+        mat4 P = ortho_matrix(0.0f, 1.0f, 0.0f, 1.0f, -1.0f, 1.0f);
+        mat4 M = mat4::identity();
+
+        // draw mesh once more
+        mesh_.draw(P, M, "Texture Layout");
+
+        // reset viewport
+        glViewport(0, 0, width(), height());
+    }
 }
 
 //----------------------------------------------------------------------------
