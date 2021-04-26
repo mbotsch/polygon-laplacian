@@ -41,9 +41,11 @@ if(WIN32)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_USE_MATH_DEFINES -DNOMINMAX -D_CRT_SECURE_NO_WARNINGS -pthread")
 endif()
 
-if (EMSCRIPTEN)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -s ALLOW_MEMORY_GROWTH=1 -s USE_GLFW=3 -s WASM=0 -s USE_WEBGL2=1 -pthread")
-    set(CMAKE_EXECUTABLE_SUFFIX ".html")
+if(EMSCRIPTEN)
+  set(CMAKE_CXX_FLAGS
+      "${CMAKE_CXX_FLAGS} -std=c++11 -s WASM=1 -s USE_GLFW=3 --no-heap-copy -s USE_WEBGL2=1 -s ALLOW_MEMORY_GROWTH=1 -s MINIFY_HTML=0 -s DISABLE_EXCEPTION_CATCHING=0"
+  )
+  set(CMAKE_EXECUTABLE_SUFFIX ".html")
 endif()
 
 # make a release build by default
